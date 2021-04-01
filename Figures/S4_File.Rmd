@@ -1,0 +1,3873 @@
+---
+title: "Metanalaysis for Down Syndrome"
+
+output:
+  html_document:
+    toc: true
+    toc_depth: 6
+    toc_float: true
+    collapsed: true
+    smooth_scroll: true
+    number_sections: false
+---
+
+```{r, echo=FALSE, warning=FALSE, comment=NA, message=FALSE}
+library(knitr)
+opts_chunk$set(echo=FALSE, warning=FALSE, comment=NA, message=FALSE, width=1000, cache=TRUE, cache.lazy=FALSE, dpi=300, dev=c('png', 'pdf'))
+options(width=1200)
+```
+
+
+```{r wdirectory}
+# setwd("~/OneDrive - CRG - Centre de Regulacio Genomica/Dropbox (CRG)/metanalysis")
+load("201911_de_list_ds.RData")
+
+```
+
+
+```{r, subset_metanalysis}
+
+#function to select for each contract the top DEGs
+subset_metanalysis=function(list_array, adjpval=0.1, max_n_genes=20000, abslog2FC=0){
+  #list_array is a list of list with names "list_ensembl", "list_adjpval", "list_log2FC"
+  
+  indexes1=lapply(list_array$adjpval, FUN=function(x) which(x < adjpval))
+  nomi=names(list_array$names)
+  list_array$names= lapply(1:length(list_array$names), FUN=function(x) (list_array$names[[x]][(indexes1[[x]])]))
+  list_array$adjpval= lapply(1:length(list_array$adjpval), FUN=function(x) (list_array$adjpval[[x]][(indexes1[[x]])]))
+  list_array$log2FC= lapply(1:length(list_array$log2FC), FUN=function(x) (list_array$log2FC[[x]][(indexes1[[x]])]))
+  names(list_array$names)=nomi
+  names(list_array$adjpval)=nomi
+  names(list_array$log2FC)=nomi
+  
+  
+  subset=which(lapply(list_array$names, length)>0)
+  list_array$names=list_array$names[subset]
+  list_array$adjpval=list_array$adjpval[subset]
+  list_array$log2FC=list_array$log2FC[subset]
+  nomi=names(list_array$names)
+  
+  indexes1=lapply(list_array$log2FC, FUN=function(x) which((x > abslog2FC )| (x < -abslog2FC )))
+  
+  list_array$names= lapply(1:length(list_array$names), FUN=function(x) (list_array$names[[x]][(indexes1[[x]])]))
+  list_array$adjpval= lapply(1:length(list_array$adjpval), FUN=function(x) (list_array$adjpval[[x]][(indexes1[[x]])]))
+  list_array$log2FC= lapply(1:length(list_array$log2FC), FUN=function(x) (list_array$log2FC[[x]][(indexes1[[x]])]))
+  names(list_array$names)=nomi
+  names(list_array$adjpval)=nomi
+  names(list_array$log2FC)=nomi
+  
+  subset=which(lapply(list_array$names, length)>0)
+  list_array$names=list_array$names[subset]
+  list_array$adjpval=list_array$adjpval[subset]
+  list_array$log2FC=list_array$log2FC[subset]
+  
+  
+  for(x in 1:length(list_array$adjpval)){
+    if(!is.na(list_array$adjpval[[x]][max_n_genes])){
+      max_genes=max_n_genes
+      a=TRUE
+      while(a){
+        if(list_array$adjpval[[x]][max_genes] == list_array$adjpval[[x]][max_genes+1]){
+          max_genes=max_genes+1
+          
+        } else{a=FALSE}}
+      
+      list_array$names[[x]]= list_array$names[[x]][1:max_genes][!is.na(list_array$names[[x]][1:max_genes])]
+      list_array$adjpval[[x]]=list_array$adjpval[[x]][1:max_genes][!is.na(list_array$adjpval[[x]][1:max_genes])]
+      list_array$log2FC[[x]]=list_array$log2FC[[x]][1:max_genes][!is.na(list_array$log2FC[[x]][1:max_genes])]
+      
+    }
+  }
+  return(list_array) 
+}
+```
+
+
+```{r create_input}
+
+list_array=list(list_ensembl, list_adjpval, list_log2FC)
+
+names(list_array)=c("names", "adjpval", "log2FC")
+
+## correct names
+list_array$names$EMTAB312[grep(" /// ",list_array$names$EMTAB312)]=unlist(lapply(list_array$names$EMTAB312[grep(" /// ",list_array$names$EMTAB312)], FUN=function(x)(strsplit(x, " /// ")[[1]][1])))
+```
+
+
+```{r find_foldchanges}
+find_fold_changes=function(ensgene, dataset=list_array){
+  dataset_true=dataset
+  dataset_true$names=dataset$names[unlist(lapply(dataset$names, FUN=function(x) (ensgene %in% x)))]
+  dataset_true$adjpval=dataset$adjpval[unlist(lapply(dataset$names, FUN=function(x) (ensgene %in% x)))]
+  dataset_true$log2FC=dataset$log2FC[unlist(lapply(dataset$names, FUN=function(x) (ensgene %in% x)))]
+  
+  
+  output=unlist(lapply(1:length(dataset_true$log2FC), FUN=function(x)(dataset_true$log2FC[[x]][which(dataset_true$names[[x]]==ensgene)])))
+  names(output)=names(dataset_true$names)
+  return(output)
+}
+
+```
+
+```{r}
+# consider as DEGs the top500 with at least 1.5 fold change and adjusted p-value < 0.05
+list_array.05_fc1.5_max500=subset_metanalysis(list_array, adjpval = 0.05, abslog2FC = log2(1.5), max_n_genes = 500 )
+
+
+```
+
+
+### Checking distribution of occurrences
+
+```{r}
+library(poweRlaw)
+m1 = displ$new(table(unlist(list_array.05_fc1.5_max500$names)))
+m1$setPars(estimate_pars(m1))
+
+m2 = dispois$new(table(unlist(list_array.05_fc1.5_max500$names)))
+m2$setPars(estimate_pars(m2))
+
+m3 = disexp$new(table(unlist(list_array.05_fc1.5_max500$names)))
+m3$setPars(estimate_pars(m3))
+
+
+m4 = dislnorm$new(table(unlist(list_array.05_fc1.5_max500$names)))
+m4$setPars(estimate_pars(m4))
+pvalues.05_fc1.5_max500=rev(dist_cdf(m4, lower_tail = FALSE))
+
+paste("power-law versus Poisson:", compare_distributions(m1, m2)$p_one_sided)
+paste("power-law versus Exponential:",compare_distributions(m1, m3)$p_one_sided)
+paste("power-law versus log-normal:",compare_distributions(m1, m4)$p_one_sided)
+paste("poisson versus log-normal:",compare_distributions(m2, m4)$p_one_sided)
+paste("exponential versus log-normal:",compare_distributions(m3, m4)$p_one_sided)
+
+hist(table(unlist(list_array.05_fc1.5_max500$names)), xlab="number of comparisons where the gene is found DE", main="", breaks=20 )
+abline(v=4, col="red", lty=2)
+plot(m1, ylab="Cumulative distribution function", xlab="number of occurences")
+lines(m1, lty=2)
+lines(m2, col=2, lty=2)
+lines(m3, col=3, lty=2)
+lines(m4, col=4, lty=2)
+
+legend("bottomleft", c("power-law", "Poisson", "Exponential","log-normal"), fill=c(1,2,3,4), cex=.65, bty="n")
+
+hubs.05_fc1.5_max500=unique(names(table(unlist(list_array.05_fc1.5_max500$names))[names(pvalues.05_fc1.5_max500[which(pvalues.05_fc1.5_max500<0.05)])]))
+
+```
+
+
+### Distribution tissue/species
+
+```{r, tissuespecies, fig.width=7, fig.height=10}
+
+summary=read.csv("summary_metanalysis_DS.csv",  header=T)
+rownames(summary)=summary$Name
+summary_sub=summary[names(list_array.05_fc1.5_max500$names),]
+
+
+
+# library(randomcoloR)
+# n <- 16
+# palette <- distinctColorPalette(n)
+vec=paste(summary_sub$Sample_type, summary_sub$Species, sep=".")
+vec=gsub("Homo sapiens", "human", vec)
+vec=gsub("Mus musculus", "mouse", vec)
+
+vec.human=vec[grep("human", vec)]
+vec.mouse=vec[grep("mouse", vec)]
+
+
+dat=as.data.frame(table(vec.mouse))
+rownames(dat)=gsub(".mouse", "", as.character(dat$vec.mouse))
+
+dat2=as.data.frame(table(vec.human))
+dat$tissue=rownames(dat)
+rownames(dat2)=gsub(".human", "", as.character(dat2$vec.human))
+dat2$tissue=rownames(dat2)
+
+
+
+dat_m=merge(dat, dat2, by="tissue", all=TRUE)
+
+rownames(dat_m)=dat_m$tissue
+
+dat_m=dat_m[,c(3,5)]
+dat_m[is.na(dat_m)] <- 0
+colnames(dat_m)=c("mouse", "human")
+
+par(mar=c(5,15,4,1))
+barplot(t(dat_m[names(sort(table(summary_sub$Sample_type))[which(sort(table(summary_sub$Sample_type))>0)]),]), horiz=T, las=2, col=c("red","black"), main="Sample Type")
+legend("right", c("mouse", "human"), fill=c("red", "black"), bty="n")
+
+
+```
+
+
+```{r}
+
+
+# par(mar=c(5,27,4,2))
+# barplot(sort(table(summary_sub$Sample_type)), horiz=T, las=2, col=rainbow(26), main="Sample Type")
+
+
+par(mar=c(5,27,4,2))
+
+barplot(sort(table(summary_sub$Platform)), horiz=T, las=2, col=rainbow(29), main="Platform")
+
+par(mar=c(5,27,4,2))
+
+barplot(sort(table(summary_sub$Model)[!is.na(table(summary_sub$Model))]), horiz=T, las=2, col=rainbow(9), main="Mouse Model")
+```
+
+```{r}
+gene_frequency=sort(table(unlist(list_array.05_fc1.5_max500$names)), decreasing=T)
+
+
+gene_frequency_top=gene_frequency[which(gene_frequency>=gene_frequency[round(length(gene_frequency)*0.05)])]
+gene_frequency_top_genes=unique(unlist(lapply(names(gene_frequency_top), function(x)(strsplit(x, split=".", fixed=T)))))
+
+
+gene_matrix=data.frame(names=gene_frequency_top_genes, occurences=as.numeric(gene_frequency[gene_frequency_top_genes]))
+
+```
+
+### Comparison with previous metanalysis
+
+```{r}
+previous=read.csv("ds_metanalysis.csv", header=T)
+
+common_name=c("GSE6283_amnio",
+"GSE6283_cvs",
+
+"GSE1294",
+"GSE1294b",
+"GSE1611",
+"GSE5390",
+"EMEXP409",	
+
+"GSE1397.crb",
+"GSE1397.crbl",
+"GSE1397.astro",
+"GSE1397.heart",
+"GSE9762",
+"GSE16176")
+
+
+common_geo=c("GSE6283",
+"GSE1294",
+"GSE1611",
+"GSE5390",
+"E-MEXP-409",	
+"GSE1397",
+"GSE9762",
+"GSE16176")
+
+```
+
+
+```{r}
+par(mar=c(5,4,4,2))
+
+library(tagcloud)
+
+tags=rownames(summary)
+colori=rep("black", length(rownames(summary)))
+colori[which(tags %in% common_name)]="red"
+
+set.seed(1)
+tagcloud(tags, col=colori)
+
+
+tags2=names(table(summary$GEO.ArrayExpress))
+
+colori2=rep("black", length(tags2))
+colori2[which(tags2 %in% common_geo)]="red"
+
+set.seed(1)
+tagcloud(tags2, weights =table(summary$GEO.ArrayExpress),  col=colori2)
+```
+
+
+### Analysis per tissue
+
+```{r}
+brain_studies= which(summary$macro_type=="Brain")
+undifferentiated_studies= which(summary$macro_type=="Undifferentiated")
+fibroblasts_studies= which(summary$macro_type=="Fibroblasts")
+placenta_amnios_studies= which(summary$macro_type=="Placenta/amnios")
+heart_studies= which(summary$macro_type=="Heart")
+muscle_studies= which(summary$macro_type=="Muscle")
+blood_studies= which(summary$macro_type=="Blood/bone marrow")
+liver_studies= which(summary$macro_type=="Liver")
+sperm_studies= which(summary$macro_type=="Sperm Cells")
+endothelia_studies= which(summary$macro_type=="Endothelia")
+```
+
+#### Brain
+
+```{r}
+list_arrayALL=list_array
+
+list_array=list(list_ensembl, list_adjpval, list_log2FC)
+
+names(list_array)=c("names", "adjpval", "log2FC")
+
+## correct names
+list_array$names$EMTAB312[grep(" /// ",list_array$names$EMTAB312)]=unlist(lapply(list_array$names$EMTAB312[grep(" /// ",list_array$names$EMTAB312)], FUN=function(x)(strsplit(x, " /// ")[[1]][1])))
+
+
+list_array$names=list_array$names[brain_studies]
+
+list_array$adjpval=list_array$adjpval[brain_studies]
+
+list_array$log2FC=list_array$log2FC[brain_studies]
+
+```
+
+`r length(list_array$log2FC)` contrasts remaining
+
+```{r}
+
+list_array.05_fc1.5_max500=subset_metanalysis(list_array, adjpval = 0.05, abslog2FC = log2(1.5), max_n_genes = 500 )
+
+
+for(i in 1:length(list_array.05_fc1.5_max500$names)){
+  
+  list_array.05_fc1.5_max500$names[[i]]=list_array.05_fc1.5_max500$names[[i]][which(!duplicated(list_array.05_fc1.5_max500$names[[i]]))]
+  list_array.05_fc1.5_max500$adjpval[[i]]=list_array.05_fc1.5_max500$adjpval[[i]][which(!duplicated(list_array.05_fc1.5_max500$names[[i]]))]
+  list_array.05_fc1.5_max500$log2FC[[i]]=list_array.05_fc1.5_max500$log2FC[[i]][which(!duplicated(list_array.05_fc1.5_max500$names[[i]]))]
+}
+
+
+m4 = dislnorm$new(table(unlist(list_array.05_fc1.5_max500$names)))
+m4$setPars(estimate_pars(m4))
+pvalues.05_fc1.5_max500=rev(dist_cdf(m4, lower_tail = FALSE))
+
+
+hubs.05_fc1.5_max500=unique(names(table(unlist(list_array.05_fc1.5_max500$names))[names(pvalues.05_fc1.5_max500[which(pvalues.05_fc1.5_max500<0.06)])]))
+
+
+
+DS_brain_studies=hubs.05_fc1.5_max500
+```
+
+minimum dataset to be consistently DE: `r table(unlist(list_array.05_fc1.5_max500$names))[names(pvalues.05_fc1.5_max500[length(hubs.05_fc1.5_max500)])]`
+
+
+#### blood_studies
+
+```{r}
+
+list_array=list(list_ensembl, list_adjpval, list_log2FC)
+
+names(list_array)=c("names", "adjpval", "log2FC")
+
+## correct names
+list_array$names$EMTAB312[grep(" /// ",list_array$names$EMTAB312)]=unlist(lapply(list_array$names$EMTAB312[grep(" /// ",list_array$names$EMTAB312)], FUN=function(x)(strsplit(x, " /// ")[[1]][1])))
+
+
+list_array$names=list_array$names[blood_studies]
+
+list_array$adjpval=list_array$adjpval[blood_studies]
+
+list_array$log2FC=list_array$log2FC[blood_studies]
+
+```
+
+`r length(list_array$log2FC)` contrasts remaining
+
+```{r}
+
+list_array.05_fc1.5_max500=subset_metanalysis(list_array, adjpval = 0.05, abslog2FC = log2(1.5), max_n_genes = 500 )
+
+
+for(i in 1:length(list_array.05_fc1.5_max500$names)){
+  
+  list_array.05_fc1.5_max500$names[[i]]=list_array.05_fc1.5_max500$names[[i]][which(!duplicated(list_array.05_fc1.5_max500$names[[i]]))]
+  list_array.05_fc1.5_max500$adjpval[[i]]=list_array.05_fc1.5_max500$adjpval[[i]][which(!duplicated(list_array.05_fc1.5_max500$names[[i]]))]
+  list_array.05_fc1.5_max500$log2FC[[i]]=list_array.05_fc1.5_max500$log2FC[[i]][which(!duplicated(list_array.05_fc1.5_max500$names[[i]]))]
+}
+
+
+m4 = dislnorm$new(table(unlist(list_array.05_fc1.5_max500$names)))
+m4$setPars(estimate_pars(m4))
+pvalues.05_fc1.5_max500=rev(dist_cdf(m4, lower_tail = FALSE))
+
+
+hubs.05_fc1.5_max500=unique(names(table(unlist(list_array.05_fc1.5_max500$names))[names(pvalues.05_fc1.5_max500[which(pvalues.05_fc1.5_max500<0.05)])]))
+
+
+
+DS_blood_studies=hubs.05_fc1.5_max500
+```
+
+minimum dataset to be consistently DE: `r table(unlist(list_array.05_fc1.5_max500$names))[names(pvalues.05_fc1.5_max500[length(hubs.05_fc1.5_max500)])]`
+
+
+#### undifferentiated_studies
+
+```{r}
+
+list_array=list(list_ensembl, list_adjpval, list_log2FC)
+
+names(list_array)=c("names", "adjpval", "log2FC")
+
+## correct names
+list_array$names$EMTAB312[grep(" /// ",list_array$names$EMTAB312)]=unlist(lapply(list_array$names$EMTAB312[grep(" /// ",list_array$names$EMTAB312)], FUN=function(x)(strsplit(x, " /// ")[[1]][1])))
+
+
+list_array$names=list_array$names[undifferentiated_studies]
+
+list_array$adjpval=list_array$adjpval[undifferentiated_studies]
+
+list_array$log2FC=list_array$log2FC[undifferentiated_studies]
+
+```
+
+`r length(list_array$log2FC)` contrasts remaining
+
+```{r}
+
+list_array.05_fc1.5_max500=subset_metanalysis(list_array, adjpval = 0.05, abslog2FC = log2(1.5), max_n_genes = 500 )
+
+
+for(i in 1:length(list_array.05_fc1.5_max500$names)){
+  
+  list_array.05_fc1.5_max500$names[[i]]=list_array.05_fc1.5_max500$names[[i]][which(!duplicated(list_array.05_fc1.5_max500$names[[i]]))]
+  list_array.05_fc1.5_max500$adjpval[[i]]=list_array.05_fc1.5_max500$adjpval[[i]][which(!duplicated(list_array.05_fc1.5_max500$names[[i]]))]
+  list_array.05_fc1.5_max500$log2FC[[i]]=list_array.05_fc1.5_max500$log2FC[[i]][which(!duplicated(list_array.05_fc1.5_max500$names[[i]]))]
+}
+
+
+m4 = dislnorm$new(table(unlist(list_array.05_fc1.5_max500$names)))
+m4$setPars(estimate_pars(m4))
+pvalues.05_fc1.5_max500=rev(dist_cdf(m4, lower_tail = FALSE))
+
+
+hubs.05_fc1.5_max500=unique(names(table(unlist(list_array.05_fc1.5_max500$names))[names(pvalues.05_fc1.5_max500[which(pvalues.05_fc1.5_max500<0.05)])]))
+
+
+
+DS_undifferentiated_studies=hubs.05_fc1.5_max500
+```
+
+minimum dataset to be consistently DE: `r table(unlist(list_array.05_fc1.5_max500$names))[names(pvalues.05_fc1.5_max500[length(hubs.05_fc1.5_max500)])]`
+
+
+
+#### fibroblasts_studies
+
+```{r}
+
+list_array=list(list_ensembl, list_adjpval, list_log2FC)
+
+names(list_array)=c("names", "adjpval", "log2FC")
+
+## correct names
+list_array$names$EMTAB312[grep(" /// ",list_array$names$EMTAB312)]=unlist(lapply(list_array$names$EMTAB312[grep(" /// ",list_array$names$EMTAB312)], FUN=function(x)(strsplit(x, " /// ")[[1]][1])))
+
+
+list_array$names=list_array$names[fibroblasts_studies]
+
+list_array$adjpval=list_array$adjpval[fibroblasts_studies]
+
+list_array$log2FC=list_array$log2FC[fibroblasts_studies]
+
+```
+
+`r length(list_array$log2FC)` contrasts remaining
+
+```{r}
+
+list_array.05_fc1.5_max500=subset_metanalysis(list_array, adjpval = 0.05, abslog2FC = log2(1.5), max_n_genes = 500 )
+
+
+for(i in 1:length(list_array.05_fc1.5_max500$names)){
+  
+  list_array.05_fc1.5_max500$names[[i]]=list_array.05_fc1.5_max500$names[[i]][which(!duplicated(list_array.05_fc1.5_max500$names[[i]]))]
+  list_array.05_fc1.5_max500$adjpval[[i]]=list_array.05_fc1.5_max500$adjpval[[i]][which(!duplicated(list_array.05_fc1.5_max500$names[[i]]))]
+  list_array.05_fc1.5_max500$log2FC[[i]]=list_array.05_fc1.5_max500$log2FC[[i]][which(!duplicated(list_array.05_fc1.5_max500$names[[i]]))]
+}
+
+
+m4 = dislnorm$new(table(unlist(list_array.05_fc1.5_max500$names)))
+m4$setPars(estimate_pars(m4))
+pvalues.05_fc1.5_max500=rev(dist_cdf(m4, lower_tail = FALSE))
+
+
+hubs.05_fc1.5_max500=unique(names(table(unlist(list_array.05_fc1.5_max500$names))[names(pvalues.05_fc1.5_max500[which(pvalues.05_fc1.5_max500<0.05)])]))
+
+
+
+DS_fibroblasts_studies=hubs.05_fc1.5_max500
+```
+
+minimum dataset to be consistently DE: `r table(unlist(list_array.05_fc1.5_max500$names))[names(pvalues.05_fc1.5_max500[length(hubs.05_fc1.5_max500)])]`
+
+
+#### placenta_amnios_studies
+
+```{r}
+
+list_array=list(list_ensembl, list_adjpval, list_log2FC)
+
+names(list_array)=c("names", "adjpval", "log2FC")
+
+## correct names
+list_array$names$EMTAB312[grep(" /// ",list_array$names$EMTAB312)]=unlist(lapply(list_array$names$EMTAB312[grep(" /// ",list_array$names$EMTAB312)], FUN=function(x)(strsplit(x, " /// ")[[1]][1])))
+
+
+list_array$names=list_array$names[placenta_amnios_studies]
+
+list_array$adjpval=list_array$adjpval[placenta_amnios_studies]
+
+list_array$log2FC=list_array$log2FC[placenta_amnios_studies]
+
+```
+
+`r length(list_array$log2FC)` contrasts remaining
+
+```{r}
+
+list_array.05_fc1.5_max500=subset_metanalysis(list_array, adjpval = 0.05, abslog2FC = log2(1.5), max_n_genes = 500 )
+
+
+for(i in 1:length(list_array.05_fc1.5_max500$names)){
+  
+  list_array.05_fc1.5_max500$names[[i]]=list_array.05_fc1.5_max500$names[[i]][which(!duplicated(list_array.05_fc1.5_max500$names[[i]]))]
+  list_array.05_fc1.5_max500$adjpval[[i]]=list_array.05_fc1.5_max500$adjpval[[i]][which(!duplicated(list_array.05_fc1.5_max500$names[[i]]))]
+  list_array.05_fc1.5_max500$log2FC[[i]]=list_array.05_fc1.5_max500$log2FC[[i]][which(!duplicated(list_array.05_fc1.5_max500$names[[i]]))]
+}
+
+
+m4 = dislnorm$new(table(unlist(list_array.05_fc1.5_max500$names)))
+m4$setPars(estimate_pars(m4))
+pvalues.05_fc1.5_max500=rev(dist_cdf(m4, lower_tail = FALSE))
+
+
+hubs.05_fc1.5_max500=unique(names(table(unlist(list_array.05_fc1.5_max500$names))[names(pvalues.05_fc1.5_max500[which(pvalues.05_fc1.5_max500<0.05)])]))
+
+
+
+DS_placenta_amnios_studies=hubs.05_fc1.5_max500
+```
+
+minimum dataset to be consistently DE: `r table(unlist(list_array.05_fc1.5_max500$names))[names(pvalues.05_fc1.5_max500[length(hubs.05_fc1.5_max500)])]`
+
+
+
+#### heart_studies
+
+```{r}
+
+list_array=list(list_ensembl, list_adjpval, list_log2FC)
+
+names(list_array)=c("names", "adjpval", "log2FC")
+
+## correct names
+list_array$names$EMTAB312[grep(" /// ",list_array$names$EMTAB312)]=unlist(lapply(list_array$names$EMTAB312[grep(" /// ",list_array$names$EMTAB312)], FUN=function(x)(strsplit(x, " /// ")[[1]][1])))
+
+
+list_array$names=list_array$names[heart_studies]
+
+list_array$adjpval=list_array$adjpval[heart_studies]
+
+list_array$log2FC=list_array$log2FC[heart_studies]
+
+```
+
+`r length(list_array$log2FC)` contrasts remaining
+
+```{r}
+
+list_array.05_fc1.5_max500=subset_metanalysis(list_array, adjpval = 0.05, abslog2FC = log2(1.5), max_n_genes = 500 )
+
+
+for(i in 1:length(list_array.05_fc1.5_max500$names)){
+  
+  list_array.05_fc1.5_max500$names[[i]]=list_array.05_fc1.5_max500$names[[i]][which(!duplicated(list_array.05_fc1.5_max500$names[[i]]))]
+  list_array.05_fc1.5_max500$adjpval[[i]]=list_array.05_fc1.5_max500$adjpval[[i]][which(!duplicated(list_array.05_fc1.5_max500$names[[i]]))]
+  list_array.05_fc1.5_max500$log2FC[[i]]=list_array.05_fc1.5_max500$log2FC[[i]][which(!duplicated(list_array.05_fc1.5_max500$names[[i]]))]
+}
+
+
+m4 = dislnorm$new(table(unlist(list_array.05_fc1.5_max500$names)))
+m4$setPars(estimate_pars(m4))
+pvalues.05_fc1.5_max500=rev(dist_cdf(m4, lower_tail = FALSE))
+
+
+hubs.05_fc1.5_max500=unique(names(table(unlist(list_array.05_fc1.5_max500$names))[names(pvalues.05_fc1.5_max500[which(pvalues.05_fc1.5_max500<0.05)])]))
+
+
+
+DS_heart_studies=hubs.05_fc1.5_max500
+```
+
+minimum dataset to be consistently DE: `r table(unlist(list_array.05_fc1.5_max500$names))[names(pvalues.05_fc1.5_max500[length(hubs.05_fc1.5_max500)])]`
+
+
+
+
+#### muscle_studies
+
+```{r}
+
+list_array=list(list_ensembl, list_adjpval, list_log2FC)
+
+names(list_array)=c("names", "adjpval", "log2FC")
+
+## correct names
+list_array$names$EMTAB312[grep(" /// ",list_array$names$EMTAB312)]=unlist(lapply(list_array$names$EMTAB312[grep(" /// ",list_array$names$EMTAB312)], FUN=function(x)(strsplit(x, " /// ")[[1]][1])))
+
+
+list_array$names=list_array$names[muscle_studies]
+
+list_array$adjpval=list_array$adjpval[muscle_studies]
+
+list_array$log2FC=list_array$log2FC[muscle_studies]
+
+```
+
+`r length(list_array$log2FC)` contrasts remaining
+
+```{r}
+
+list_array.05_fc1.5_max500=subset_metanalysis(list_array, adjpval = 0.05, abslog2FC = log2(1.5), max_n_genes = 500 )
+
+
+for(i in 1:length(list_array.05_fc1.5_max500$names)){
+  
+  list_array.05_fc1.5_max500$names[[i]]=list_array.05_fc1.5_max500$names[[i]][which(!duplicated(list_array.05_fc1.5_max500$names[[i]]))]
+  list_array.05_fc1.5_max500$adjpval[[i]]=list_array.05_fc1.5_max500$adjpval[[i]][which(!duplicated(list_array.05_fc1.5_max500$names[[i]]))]
+  list_array.05_fc1.5_max500$log2FC[[i]]=list_array.05_fc1.5_max500$log2FC[[i]][which(!duplicated(list_array.05_fc1.5_max500$names[[i]]))]
+}
+
+
+m4 = dislnorm$new(table(unlist(list_array.05_fc1.5_max500$names)))
+m4$setPars(estimate_pars(m4))
+pvalues.05_fc1.5_max500=rev(dist_cdf(m4, lower_tail = FALSE))
+
+
+hubs.05_fc1.5_max500=unique(names(table(unlist(list_array.05_fc1.5_max500$names))[names(pvalues.05_fc1.5_max500[which(pvalues.05_fc1.5_max500<0.05)])]))
+
+
+
+DS_muscle_studies=hubs.05_fc1.5_max500
+```
+
+minimum dataset to be consistently DE: `r table(unlist(list_array.05_fc1.5_max500$names))[names(pvalues.05_fc1.5_max500[length(hubs.05_fc1.5_max500)])]`
+
+
+
+#### liver_studies
+
+```{r}
+
+list_array=list(list_ensembl, list_adjpval, list_log2FC)
+
+names(list_array)=c("names", "adjpval", "log2FC")
+
+## correct names
+list_array$names$EMTAB312[grep(" /// ",list_array$names$EMTAB312)]=unlist(lapply(list_array$names$EMTAB312[grep(" /// ",list_array$names$EMTAB312)], FUN=function(x)(strsplit(x, " /// ")[[1]][1])))
+
+
+list_array$names=list_array$names[liver_studies]
+
+list_array$adjpval=list_array$adjpval[liver_studies]
+
+list_array$log2FC=list_array$log2FC[liver_studies]
+
+```
+
+`r length(list_array$log2FC)` contrasts remaining
+
+```{r}
+
+list_array.05_fc1.5_max500=subset_metanalysis(list_array, adjpval = 0.05, abslog2FC = log2(1.5), max_n_genes = 500 )
+
+
+for(i in 1:length(list_array.05_fc1.5_max500$names)){
+  
+  list_array.05_fc1.5_max500$names[[i]]=list_array.05_fc1.5_max500$names[[i]][which(!duplicated(list_array.05_fc1.5_max500$names[[i]]))]
+  list_array.05_fc1.5_max500$adjpval[[i]]=list_array.05_fc1.5_max500$adjpval[[i]][which(!duplicated(list_array.05_fc1.5_max500$names[[i]]))]
+  list_array.05_fc1.5_max500$log2FC[[i]]=list_array.05_fc1.5_max500$log2FC[[i]][which(!duplicated(list_array.05_fc1.5_max500$names[[i]]))]
+}
+
+
+m4 = dislnorm$new(table(unlist(list_array.05_fc1.5_max500$names)))
+m4$setPars(estimate_pars(m4))
+pvalues.05_fc1.5_max500=rev(dist_cdf(m4, lower_tail = FALSE))
+
+
+hubs.05_fc1.5_max500=unique(names(table(unlist(list_array.05_fc1.5_max500$names))[names(pvalues.05_fc1.5_max500[which(pvalues.05_fc1.5_max500<0.05)])]))
+
+
+
+DS_liver_studies=hubs.05_fc1.5_max500
+```
+
+minimum dataset to be consistently DE: `r table(unlist(list_array.05_fc1.5_max500$names))[names(pvalues.05_fc1.5_max500[length(hubs.05_fc1.5_max500)])]`
+
+
+#### sperm_studies
+
+```{r}
+
+list_array=list(list_ensembl, list_adjpval, list_log2FC)
+
+names(list_array)=c("names", "adjpval", "log2FC")
+
+## correct names
+list_array$names$EMTAB312[grep(" /// ",list_array$names$EMTAB312)]=unlist(lapply(list_array$names$EMTAB312[grep(" /// ",list_array$names$EMTAB312)], FUN=function(x)(strsplit(x, " /// ")[[1]][1])))
+
+
+list_array$names=list_array$names[sperm_studies]
+
+list_array$adjpval=list_array$adjpval[sperm_studies]
+
+list_array$log2FC=list_array$log2FC[sperm_studies]
+
+```
+
+`r length(list_array$log2FC)` contrasts remaining
+
+```{r}
+
+list_array.05_fc1.5_max500=subset_metanalysis(list_array, adjpval = 0.05, abslog2FC = log2(1.5), max_n_genes = 500 )
+
+
+for(i in 1:length(list_array.05_fc1.5_max500$names)){
+  
+  list_array.05_fc1.5_max500$names[[i]]=list_array.05_fc1.5_max500$names[[i]][which(!duplicated(list_array.05_fc1.5_max500$names[[i]]))]
+  list_array.05_fc1.5_max500$adjpval[[i]]=list_array.05_fc1.5_max500$adjpval[[i]][which(!duplicated(list_array.05_fc1.5_max500$names[[i]]))]
+  list_array.05_fc1.5_max500$log2FC[[i]]=list_array.05_fc1.5_max500$log2FC[[i]][which(!duplicated(list_array.05_fc1.5_max500$names[[i]]))]
+}
+
+
+m4 = dislnorm$new(table(unlist(list_array.05_fc1.5_max500$names)))
+m4$setPars(estimate_pars(m4))
+pvalues.05_fc1.5_max500=rev(dist_cdf(m4, lower_tail = FALSE))
+
+
+hubs.05_fc1.5_max500=unique(names(table(unlist(list_array.05_fc1.5_max500$names))[names(pvalues.05_fc1.5_max500[which(pvalues.05_fc1.5_max500<0.05)])]))
+
+
+
+DS_sperm_studies=hubs.05_fc1.5_max500
+```
+
+minimum dataset to be consistently DE: `r table(unlist(list_array.05_fc1.5_max500$names))[names(pvalues.05_fc1.5_max500[length(hubs.05_fc1.5_max500)])]`
+
+
+
+#### endothelia_studies
+
+```{r}
+
+list_array=list(list_ensembl, list_adjpval, list_log2FC)
+
+names(list_array)=c("names", "adjpval", "log2FC")
+
+## correct names
+list_array$names$EMTAB312[grep(" /// ",list_array$names$EMTAB312)]=unlist(lapply(list_array$names$EMTAB312[grep(" /// ",list_array$names$EMTAB312)], FUN=function(x)(strsplit(x, " /// ")[[1]][1])))
+
+
+list_array$names=list_array$names[endothelia_studies]
+
+list_array$adjpval=list_array$adjpval[endothelia_studies]
+
+list_array$log2FC=list_array$log2FC[endothelia_studies]
+
+```
+
+`r length(list_array$log2FC)` contrasts remaining
+
+```{r}
+
+list_array.05_fc1.5_max500=subset_metanalysis(list_array, adjpval = 0.05, abslog2FC = log2(1.5), max_n_genes = 500 )
+
+
+for(i in 1:length(list_array.05_fc1.5_max500$names)){
+  
+  list_array.05_fc1.5_max500$names[[i]]=list_array.05_fc1.5_max500$names[[i]][which(!duplicated(list_array.05_fc1.5_max500$names[[i]]))]
+  list_array.05_fc1.5_max500$adjpval[[i]]=list_array.05_fc1.5_max500$adjpval[[i]][which(!duplicated(list_array.05_fc1.5_max500$names[[i]]))]
+  list_array.05_fc1.5_max500$log2FC[[i]]=list_array.05_fc1.5_max500$log2FC[[i]][which(!duplicated(list_array.05_fc1.5_max500$names[[i]]))]
+}
+
+
+m4 = dislnorm$new(table(unlist(list_array.05_fc1.5_max500$names)))
+m4$setPars(estimate_pars(m4))
+pvalues.05_fc1.5_max500=rev(dist_cdf(m4, lower_tail = FALSE))
+
+
+hubs.05_fc1.5_max500=unique(names(table(unlist(list_array.05_fc1.5_max500$names))[names(pvalues.05_fc1.5_max500[which(pvalues.05_fc1.5_max500<0.05)])]))
+
+
+
+DS_endothelia_studies=hubs.05_fc1.5_max500
+```
+
+minimum dataset to be consistently DE: `r table(unlist(list_array.05_fc1.5_max500$names))[names(pvalues.05_fc1.5_max500[length(hubs.05_fc1.5_max500)])]`
+
+
+
+
+
+
+```{r}
+DS_tissue_genes=list(DS_brain_studies, DS_undifferentiated_studies, DS_fibroblasts_studies, DS_placenta_amnios_studies, DS_heart_studies, DS_muscle_studies,DS_blood_studies, DS_liver_studies, DS_sperm_studies, DS_endothelia_studies)
+
+
+names(DS_tissue_genes)=c("brain", "iPSCs/ESCs", "fibroblasts", "placenta/amnios","heart", "muscle", "blood", "liver","sperm cells", "endothelia")
+
+str(DS_tissue_genes)
+
+```
+```{r}
+create_overlap_matrix3=function(lista){
+  mat1a=matrix(rep(NA,length(lista)*length(lista)), length(lista),length(lista)) #number
+  mat=matrix(rep(NA,length(lista)*length(lista)), length(lista),length(lista)) #overlap coef
+  rownames(mat)=names(lista)
+  colnames(mat)=names(lista)
+  rownames(mat1a)=names(lista)
+  colnames(mat1a)=names(lista)
+  for (o in 1:length(lista)){
+    for (n in 1:length(lista)){
+  
+      op=as.character(lista[[o]])
+      np=as.character(lista[[n]])
+      
+      mat[o,n]=length(intersect(op,np))/min(length(op), length(np))
+      mat1a[o,n]=length(intersect(op,np))
+      
+    }}
+
+  return(list(mat1a, mat))
+}
+```
+
+```{r}
+DS_tissue_genes=DS_tissue_genes[which(sapply(DS_tissue_genes, length)>0)]
+
+DS_overlaps=create_overlap_matrix3(DS_tissue_genes)
+
+rownames(DS_overlaps[[2]])=paste0(names(DS_tissue_genes), " (",sapply(DS_tissue_genes, length), ")" )
+```
+
+### Tissue-macro category specific DE gene
+
+
+```{r, fig.width=8, fig.height=8}
+library(gplots)
+library(RColorBrewer)
+heatmap.2(DS_overlaps[[2]], dendrogram="none", scale="none", density.info="none", trace="none", col=colorRampPalette(brewer.pal(9, "OrRd"))(256), main="", key.title="", Rowv=FALSE, Colv=rev("Rowv"), cex.axis=.5, cexRow=1.1, cexCol=1.1,cellnote=DS_overlaps[[1]], keysize=1,key.xlab ="overlap coefficient",srtCol=45, margins=c(8,12))
+```
+
+
+```{r}
+library(biomaRt)
+human = useEnsembl("ensembl", dataset = "hsapiens_gene_ensembl",
+mirror = "useast")
+genes=unique(unlist(DS_tissue_genes))
+genesfromtissues=getBM(attributes=c("ensembl_gene_id", "hgnc_symbol", "chromosome_name"),filters="ensembl_gene_id", values=genes, mart = human)
+# save(DS_tissue_genes, file="DS_tissue_genes.rda")
+# ada
+# 
+# genesfromtissues$hgnc_symbol[which(genesfromtissues$hgnc_symbol=="")]=c("Lnc-SSU72P8-2","Lnc-GPM6A-1", "Lnc-EFR3A-1", "lnc-COX10-3","TEC", "Lnc-ATXN1-8", "ALDOA")
+
+rownames(genesfromtissues)=genesfromtissues$ensembl_gene_id
+
+```
+
+
+
+
+```{r}
+mat_graph2=cbind(rep(NA, sum(sapply(DS_tissue_genes, length))), rep(NA, sum(sapply(DS_tissue_genes, length))))
+
+index=0
+for(i in 1:length(DS_tissue_genes)){
+  mat_graph2[,1][(index+1):(index+length(DS_tissue_genes[[i]]))]=names(DS_tissue_genes)[[i]]
+  for(j in 1:length(DS_tissue_genes[[i]])){
+    mat_graph2[,2][index+j]=DS_tissue_genes[[i]][j]
+  }
+  index=index+length(DS_tissue_genes[[i]])
+}
+
+
+
+library(igraph)
+# graph_datasets=graph_from_adjacency_matrix(DS_overlaps[[1]], mode="undirected", weighted=TRUE, diag=FALSE)
+
+```
+
+
+
+```{r}
+
+library(igraph)
+graph_coex2=graph_from_data_frame(as.data.frame(mat_graph2), directed = FALSE, vertices = NULL)
+
+
+V(graph_coex2)$size =5
+
+ V(graph_coex2)$size[grep("ENSG", V(graph_coex2)$name)]=2
+
+
+# summary=read.csv("summary_metanalysis_DS.csv",  header=T)
+# rownames(summary)=summary$Name
+# macro_type_col=as.factor(as.character(summary[V(graph_coex2)$name[1:86],]$macro_type))
+# study_labels=as.character(summary[V(graph_coex2)$name[1:86],]$Sample_type)
+# 
+# labels=rep(NA, vcount(graph_coex2))
+# 
+# 
+# labels[1:86]=study_labels
+
+V(graph_coex2)$color="white"
+library(RColorBrewer)
+
+V(graph_coex2)$color[1:length(DS_tissue_genes)]=brewer.pal(length(DS_tissue_genes), "Set1")[1:length(DS_tissue_genes)]
+
+# V(graph_coex2)$color[which(V(graph_coex2)$name %in% V(graph_coex)$name)]="turquoise"
+
+entropicgenes=names(which(table(unlist(DS_tissue_genes))>1))
+
+
+genesfromtissues=genesfromtissues[V(graph_coex2)$name,]
+
+
+genesfromtissues$chromosome_name[which(genesfromtissues$chromosome_name=="CHR_HSCHR16_1_CTG1")]="16"
+genesfromtissues$chromosome_name[which(genesfromtissues$chromosome_name=="CHR_HSCHR21_3_CTG1_1")]="21"
+genesfromtissues$chromosome_name[which(genesfromtissues$chromosome_name=="CHR_HSCHR21_4_CTG1_1")]="21"
+genesfromtissues$chromosome_name[which(genesfromtissues$chromosome_name=="CHR_HSCHR21_5_CTG2")]="21"
+
+V(graph_coex2)$shape =rep("circle", vcount(graph_coex2))
+V(graph_coex2)$shape[which(genesfromtissues$chromosome_name=="21")]="square"
+
+
+labels=genesfromtissues$hgnc_symbol
+labels[1:length(DS_tissue_genes)]=names(DS_tissue_genes)
+col_labels=rep("red", vcount(graph_coex2))
+col_labels[1:length(DS_tissue_genes)]="black"
+
+
+size_labels=rep(.75, vcount(graph_coex2))
+size_labels[1:length(DS_tissue_genes)]=1
+
+
+
+
+df_sizes=as.data.frame(cbind(gene_matrix[,1], log2(gene_matrix[,2])))
+
+V(graph_coex2)$size[which(V(graph_coex2)$name %in% df_sizes$V1 )]=as.numeric(as.character(df_sizes$V2))[which(df_sizes$V1 %in% V(graph_coex2)$name)]
+
+labels2=rep(NA,length(labels))
+labels2[1:6]=labels[1:6]
+
+V(graph_coex2)$color[which(V(graph_coex2)$name %in% entropicgenes)]="black"
+
+
+labels2[which(V(graph_coex2)$name %in% entropicgenes)]=labels[which(V(graph_coex2)$name %in% entropicgenes)]
+
+
+
+
+
+
+# coords2=tk_coords(virtualplot)
+# save(coords2, file="coords2.rda")
+
+load("coords2.rda")
+
+coords2=coords2[c(1:6,which(V(graph_coex2)$name %in% gene_matrix[,1])),]
+todelete=setdiff(V(graph_coex2)$name, gene_matrix[,1])
+
+todelete=setdiff(todelete, todelete[1:6])
+graph_coex2=delete_vertices(graph_coex2, todelete)
+par(mar=c(0,0,0,5),xpd=TRUE)
+set.seed(1)
+plot(graph_coex2,vertex.label=labels2[c(1:6,which(V(graph_coex2)$name %in% gene_matrix[,1]))], vertex.label.color=col_labels[c(1:6,which(V(graph_coex2)$name %in% gene_matrix[,1]))],vertex.label.cex=size_labels[c(1:6,which(V(graph_coex2)$name %in% gene_matrix[,1]))], layout=coords2)
+
+
+legend("topleft", 
+       c("chr21", "other chrs"), bty="n",cex=1,
+       pch=c(0,1), title="deregulated in:")
+
+legend("bottom", 
+       c("low", "high"), bty="n",pt.cex=c(1,3),
+       pch=1, title="log2(occurences):",cex=1)
+
+
+
+```
+
+
+```{r}
+list_array=list(list_ensembl, list_adjpval, list_log2FC)
+
+names(list_array)=c("names", "adjpval", "log2FC")
+
+## correct names
+list_array$names$EMTAB312[grep(" /// ",list_array$names$EMTAB312)]=unlist(lapply(list_array$names$EMTAB312[grep(" /// ",list_array$names$EMTAB312)], FUN=function(x)(strsplit(x, " /// ")[[1]][1])))
+list_array.05_fc1.5_max500=subset_metanalysis(list_array, adjpval = 0.05, abslog2FC = log2(1.5), max_n_genes = 500 )
+
+list_array.05_fc1.5_max500=subset_metanalysis(list_array, adjpval = 0.05, abslog2FC = log2(1.5), max_n_genes = 500 )
+
+```
+
+## Chromosome distribution
+
+
+
+```{r}
+library(biomaRt)
+human = useMart("ensembl", dataset = "hsapiens_gene_ensembl",host="oct2018.archive.ensembl.org")
+
+interesting_genes=getBM(attributes=c("ensembl_gene_id", "hgnc_symbol", "description", "chromosome_name", "band"),filters="ensembl_gene_id", values=gene_matrix$names, mart = human)
+interesting_genes$chromosome_name[which(interesting_genes$chromosome_name=="CHR_HSCHR14_7_CTG1")]=14
+
+interesting_genes$chromosome_name[grep("CHR_HSCHR", interesting_genes$chromosome_name)]=21
+
+
+interesting_genes$description=unlist(lapply(interesting_genes$description, FUN=function(x)strsplit(x, split='[', fixed=T)[[1]][1]))
+
+
+rownames(interesting_genes)=interesting_genes$ensembl_gene_id
+
+interesting_genes=interesting_genes[gene_matrix$names,]
+
+
+
+interesting_genes$occurences=gene_matrix$occurences
+
+interesting_genes$combinations=gene_matrix$combinations
+
+
+
+
+interesting_genes$median_log2FC=rep(NA, dim(interesting_genes)[1])
+interesting_genes$sd_log2FC=rep(NA, dim(interesting_genes)[1])
+interesting_genes$mean_log2FC=rep(NA, dim(interesting_genes)[1])
+
+
+for(i in 1:dim(interesting_genes)[1]){
+  ensgene=interesting_genes$ensembl_gene_id[i]
+  fcs=find_fold_changes(ensgene, list_array.05_fc1.5_max500)
+  interesting_genes$median_log2FC[i]=median(fcs)
+  interesting_genes$sd_log2FC[i]=sd(fcs)
+  interesting_genes$mean_log2FC[i]=mean(fcs)
+  
+}
+
+
+
+dtchr=aggregate(median_log2FC~chromosome_name, FUN=median, data=interesting_genes)
+prova=dtchr[1:22,]
+prova$chromosome_name=as.numeric(prova$chromosome_name)
+dtchr=rbind(prova[order(prova$chromosome_name),], dtchr[dim(dtchr)[1],])
+nomi=dtchr$chromosome_name
+dtchr=dtchr[,2]
+names(dtchr)=nomi
+
+
+```
+
+```{r}
+par(mar=c(12,4,4,2))
+barplot(table(interesting_genes$chromosome_name)[c(1,12,16:22,2:11, 13:15, length(table(interesting_genes$chromosome_name)))], las=2, xlab="chromosome", ylab = "number of genes", main="consistently DE genes")
+```
+
+```{r}
+
+all_genes=getBM(attributes=c("ensembl_gene_id", "chromosome_name"),values="*", mart = human)
+all_genes_table=table(all_genes$chromosome_name)
+
+table1=table(interesting_genes$chromosome_name)[c(1,12,16:22,2:11, 13:15, length(table(interesting_genes$chromosome_name)))]
+par(mar=c(12,4,4,2))
+barplot(table1/all_genes_table[names(table1)], las=2, xlab="chromosome", ylab = "% of genes", main="consistently DE genes")
+```
+
+
+
+
+```{r}
+interesting_genes$chr_band=as.factor(paste(interesting_genes$chromosome_name, interesting_genes$band, sep=""))
+
+median_chrband=split(interesting_genes$median_log2FC, interesting_genes$chr_band)
+
+median_chrband=median_chrband[c(grep("^1p",names(median_chrband)),grep("^1q",names(median_chrband)),
+grep("^2p",names(median_chrband)),grep("^2q",names(median_chrband)),
+grep("^3p",names(median_chrband)),grep("^3q",names(median_chrband)),
+grep("^4p",names(median_chrband)),grep("^4q",names(median_chrband)),
+grep("^5p",names(median_chrband)),grep("^5q",names(median_chrband)),
+grep("^6p",names(median_chrband)),grep("^6q",names(median_chrband)),
+grep("^7p",names(median_chrband)),grep("^7q",names(median_chrband)),
+grep("^8p",names(median_chrband)),grep("^8q",names(median_chrband)),
+grep("^9p",names(median_chrband)),grep("^9q",names(median_chrband)),
+grep("^10p",names(median_chrband)),grep("^10q",names(median_chrband)),
+grep("^11p",names(median_chrband)),grep("^11q",names(median_chrband)),
+grep("^12p",names(median_chrband)),grep("^12q",names(median_chrband)),
+grep("^13p",names(median_chrband)),grep("^13q",names(median_chrband)),
+grep("^14p",names(median_chrband)),grep("^14q",names(median_chrband)),
+grep("^15p",names(median_chrband)),grep("^15q",names(median_chrband)),
+grep("^16p",names(median_chrband)),grep("^16q",names(median_chrband)),
+grep("^17p",names(median_chrband)),grep("^17q",names(median_chrband)),
+grep("^18p",names(median_chrband)),grep("^18q",names(median_chrband)),
+grep("^19p",names(median_chrband)),grep("^19q",names(median_chrband)),
+grep("^20p",names(median_chrband)),grep("^20q",names(median_chrband)),
+grep("^21p",names(median_chrband)),grep("^21q",names(median_chrband)),
+grep("^22p",names(median_chrband)),grep("^22q",names(median_chrband)),
+grep("^Xp",names(median_chrband)),grep("Xq",names(median_chrband)))]
+
+
+
+
+tol23rainbow= c("#ffffff", "#771155", "#AA4488", "#CC99BB", "#114477", "#4477AA", "#77AADD", "#117777", "#44AAAA", "#77CCCC", "#117744", "#44AA77", "#88CCAA", "#777711", "#AAAA44", "#DDDD77", "#774411", "#AA7744", "#DDAA77", "#771122", "#AA4455", "#DD7788", "#000000")
+
+colors=c(rep(tol23rainbow[1],length(c(grep("^1p",names(median_chrband)),grep("^1q",names(median_chrband))))),
+         rep(tol23rainbow[2],length(c(grep("^2p",names(median_chrband)),grep("^2q",names(median_chrband))))),
+rep(tol23rainbow[3],length(c(grep("^3p",names(median_chrband)),grep("^3q",names(median_chrband))))),
+rep(tol23rainbow[4],length(c(grep("^4p",names(median_chrband)),grep("^4q",names(median_chrband))))),
+rep(tol23rainbow[5],length(c(grep("^5p",names(median_chrband)),grep("^5q",names(median_chrband))))),
+rep(tol23rainbow[6],length(c(grep("^6p",names(median_chrband)),grep("^6q",names(median_chrband))))),
+rep(tol23rainbow[7],length(c(grep("^7p",names(median_chrband)),grep("^7q",names(median_chrband))))),
+rep(tol23rainbow[8],length(c(grep("^8p",names(median_chrband)),grep("^8q",names(median_chrband))))),
+rep(tol23rainbow[9],length(c(grep("^9p",names(median_chrband)),grep("^9q",names(median_chrband))))),
+rep(tol23rainbow[10],length(c(grep("^10p",names(median_chrband)),grep("^10q",names(median_chrband))))),
+rep(tol23rainbow[11],length(c(grep("^11p",names(median_chrband)),grep("^11q",names(median_chrband))))),
+rep(tol23rainbow[12],length(c(grep("^12p",names(median_chrband)),grep("^12q",names(median_chrband))))),
+rep(tol23rainbow[13],length(c(grep("^13p",names(median_chrband)),grep("^13q",names(median_chrband))))),
+rep(tol23rainbow[14],length(c(grep("^14p",names(median_chrband)),grep("^14q",names(median_chrband))))),
+rep(tol23rainbow[15],length(c(grep("^15p",names(median_chrband)),grep("^15q",names(median_chrband))))),
+rep(tol23rainbow[16],length(c(grep("^16p",names(median_chrband)),grep("^16q",names(median_chrband))))),
+rep(tol23rainbow[17],length(c(grep("^17p",names(median_chrband)),grep("^17q",names(median_chrband))))),
+rep(tol23rainbow[18],length(c(grep("^18p",names(median_chrband)),grep("^18q",names(median_chrband))))),
+rep(tol23rainbow[19],length(c(grep("^19p",names(median_chrband)),grep("^19q",names(median_chrband))))),
+rep(tol23rainbow[20],length(c(grep("^20p",names(median_chrband)),grep("^20q",names(median_chrband))))),
+rep(tol23rainbow[21],length(c(grep("^21p",names(median_chrband)),grep("^21q",names(median_chrband))))),
+rep(tol23rainbow[22],length(c(grep("^22p",names(median_chrband)),grep("^22q",names(median_chrband))))),
+rep(tol23rainbow[23],length(c(grep("^Xp",names(median_chrband)),grep("Xq",names(median_chrband))))))
+
+
+```
+
+
+```{r, fig.width=70, fig.height=7}
+
+boxplot(median_chrband, xlab="region", ylab="log2FC",col=colors,las=2)
+abline(h=0, lty="dashed", col="gray")
+abline(h=log2(1.5), lty="dashed", col="red")
+abline(h=-log2(1.5), lty="dashed", col="blue")
+```
+
+
+
+### % of genes on band
+
+```{r}
+table_chrband=table(interesting_genes$chr_band)
+
+table_chrband=table_chrband[c(grep("^1p",names(table_chrband)),grep("^1q",names(table_chrband)),
+grep("^2p",names(table_chrband)),grep("^2q",names(table_chrband)),
+grep("^3p",names(table_chrband)),grep("^3q",names(table_chrband)),
+grep("^4p",names(table_chrband)),grep("^4q",names(table_chrband)),
+grep("^5p",names(table_chrband)),grep("^5q",names(table_chrband)),
+grep("^6p",names(table_chrband)),grep("^6q",names(table_chrband)),
+grep("^7p",names(table_chrband)),grep("^7q",names(table_chrband)),
+grep("^8p",names(table_chrband)),grep("^8q",names(table_chrband)),
+grep("^9p",names(table_chrband)),grep("^9q",names(table_chrband)),
+grep("^10p",names(table_chrband)),grep("^10q",names(table_chrband)),
+grep("^11p",names(table_chrband)),grep("^11q",names(table_chrband)),
+grep("^12p",names(table_chrband)),grep("^12q",names(table_chrband)),
+grep("^13p",names(table_chrband)),grep("^13q",names(table_chrband)),
+grep("^14p",names(table_chrband)),grep("^14q",names(table_chrband)),
+grep("^15p",names(table_chrband)),grep("^15q",names(table_chrband)),
+grep("^16p",names(table_chrband)),grep("^16q",names(table_chrband)),
+grep("^17p",names(table_chrband)),grep("^17q",names(table_chrband)),
+grep("^18p",names(table_chrband)),grep("^18q",names(table_chrband)),
+grep("^19p",names(table_chrband)),grep("^19q",names(table_chrband)),
+grep("^20p",names(table_chrband)),grep("^20q",names(table_chrband)),
+grep("^21p",names(table_chrband)),grep("^21q",names(table_chrband)),
+grep("^22p",names(table_chrband)),grep("^22q",names(table_chrband)),
+grep("^Xp",names(table_chrband)),grep("Xq",names(table_chrband)))]
+
+
+
+colors2=c(rep(tol23rainbow[1],length(c(grep("^1p",names(table_chrband)),grep("^1q",names(table_chrband))))),
+         rep(tol23rainbow[2],length(c(grep("^2p",names(table_chrband)),grep("^2q",names(table_chrband))))),
+rep(tol23rainbow[3],length(c(grep("^3p",names(table_chrband)),grep("^3q",names(table_chrband))))),
+rep(tol23rainbow[4],length(c(grep("^4p",names(table_chrband)),grep("^4q",names(table_chrband))))),
+rep(tol23rainbow[5],length(c(grep("^5p",names(table_chrband)),grep("^5q",names(table_chrband))))),
+rep(tol23rainbow[6],length(c(grep("^6p",names(table_chrband)),grep("^6q",names(table_chrband))))),
+rep(tol23rainbow[7],length(c(grep("^7p",names(table_chrband)),grep("^7q",names(table_chrband))))),
+rep(tol23rainbow[8],length(c(grep("^8p",names(table_chrband)),grep("^8q",names(table_chrband))))),
+rep(tol23rainbow[9],length(c(grep("^9p",names(table_chrband)),grep("^9q",names(table_chrband))))),
+rep(tol23rainbow[10],length(c(grep("^10p",names(table_chrband)),grep("^10q",names(table_chrband))))),
+rep(tol23rainbow[11],length(c(grep("^11p",names(table_chrband)),grep("^11q",names(table_chrband))))),
+rep(tol23rainbow[12],length(c(grep("^12p",names(table_chrband)),grep("^12q",names(table_chrband))))),
+rep(tol23rainbow[13],length(c(grep("^13p",names(table_chrband)),grep("^13q",names(table_chrband))))),
+rep(tol23rainbow[14],length(c(grep("^14p",names(table_chrband)),grep("^14q",names(table_chrband))))),
+rep(tol23rainbow[15],length(c(grep("^15p",names(table_chrband)),grep("^15q",names(table_chrband))))),
+rep(tol23rainbow[16],length(c(grep("^16p",names(table_chrband)),grep("^16q",names(table_chrband))))),
+rep(tol23rainbow[17],length(c(grep("^17p",names(table_chrband)),grep("^17q",names(table_chrband))))),
+rep(tol23rainbow[18],length(c(grep("^18p",names(table_chrband)),grep("^18q",names(table_chrband))))),
+rep(tol23rainbow[19],length(c(grep("^19p",names(table_chrband)),grep("^19q",names(table_chrband))))),
+rep(tol23rainbow[20],length(c(grep("^20p",names(table_chrband)),grep("^20q",names(table_chrband))))),
+rep(tol23rainbow[21],length(c(grep("^21p",names(table_chrband)),grep("^21q",names(table_chrband))))),
+rep(tol23rainbow[22],length(c(grep("^22p",names(table_chrband)),grep("^22q",names(table_chrband))))),
+rep(tol23rainbow[23],length(c(grep("^Xp",names(table_chrband)),grep("Xq",names(table_chrband))))))
+
+
+```
+
+
+
+
+```{r, fig.width=120, fig.height=7}
+all_genes=getBM(attributes=c("ensembl_gene_id", "chromosome_name", "band"),values="*", mart = human)
+
+
+all_genes$chr_band=as.factor(paste(all_genes$chromosome_name, all_genes$band, sep=""))
+
+
+all_genes_table=table(all_genes$chr_band)
+
+
+
+all_genes_table=all_genes_table[c(grep("^1p",names(all_genes_table)),grep("^1q",names(all_genes_table)),
+grep("^2p",names(all_genes_table)),grep("^2q",names(all_genes_table)),
+grep("^3p",names(all_genes_table)),grep("^3q",names(all_genes_table)),
+grep("^4p",names(all_genes_table)),grep("^4q",names(all_genes_table)),
+grep("^5p",names(all_genes_table)),grep("^5q",names(all_genes_table)),
+grep("^6p",names(all_genes_table)),grep("^6q",names(all_genes_table)),
+grep("^7p",names(all_genes_table)),grep("^7q",names(all_genes_table)),
+grep("^8p",names(all_genes_table)),grep("^8q",names(all_genes_table)),
+grep("^9p",names(all_genes_table)),grep("^9q",names(all_genes_table)),
+grep("^10p",names(all_genes_table)),grep("^10q",names(all_genes_table)),
+grep("^11p",names(all_genes_table)),grep("^11q",names(all_genes_table)),
+grep("^12p",names(all_genes_table)),grep("^12q",names(all_genes_table)),
+grep("^13p",names(all_genes_table)),grep("^13q",names(all_genes_table)),
+grep("^14p",names(all_genes_table)),grep("^14q",names(all_genes_table)),
+grep("^15p",names(all_genes_table)),grep("^15q",names(all_genes_table)),
+grep("^16p",names(all_genes_table)),grep("^16q",names(all_genes_table)),
+grep("^17p",names(all_genes_table)),grep("^17q",names(all_genes_table)),
+grep("^18p",names(all_genes_table)),grep("^18q",names(all_genes_table)),
+grep("^19p",names(all_genes_table)),grep("^19q",names(all_genes_table)),
+grep("^20p",names(all_genes_table)),grep("^20q",names(all_genes_table)),
+grep("^21p",names(all_genes_table)),grep("^21q",names(all_genes_table)),
+grep("^22p",names(all_genes_table)),grep("^22q",names(all_genes_table)),
+grep("^Xp",names(all_genes_table)),grep("Xq",names(all_genes_table)))]
+
+
+table_chrband2=rep(0, length(all_genes_table))
+names(table_chrband2)  =names(all_genes_table)
+
+table_chrband2[names(table_chrband)]=table_chrband
+
+barplot(table_chrband2/all_genes_table, xlab="region", ylab="% of genes",col=colors2, las=2)
+
+
+pdf(height=7, width = 120, file="Percent_gene_band.pdf")
+barplot(table_chrband2/all_genes_table, xlab="region", ylab="% of genes",col=colors2, las=2)
+abline(h=.1, col="red", lty=2)
+dev.off()
+```
+
+
+
+
+
+
+### Entropy
+
+```{r}
+sectors=cbind(names(list_array.05_fc1.5_max500$names),as.character(summary[names(list_array.05_fc1.5_max500$names),"Sample_type"]),as.character(summary[names(list_array.05_fc1.5_max500$names),"macro_type"]))
+colnames(sectors)=c("study", "sample_type", "macro_type")
+sectors=as.data.frame(sectors)
+rownames(sectors)=sectors$study
+
+list_sample_type=rep(list(NA), length(levels(as.factor(sectors$sample_type))))
+names(list_sample_type)=levels(as.factor(sectors$sample_type))
+for(i in 1:length(list_sample_type)){
+  studies=as.character(unique(sectors$study[which(sectors$sample_type == names(list_sample_type)[i])]))
+  list_sample_type[[i]]=unique(unlist(list_array.05_fc1.5_max500$names[studies]))
+}
+
+
+list_macro_type=rep(list(NA), length(levels(as.factor(sectors$macro_type))))
+names(list_macro_type)=levels(as.factor(sectors$macro_type))
+for(i in 1:length(list_macro_type)){
+  studies=as.character(unique(sectors$study[which(sectors$macro_type == names(list_macro_type)[i])]))
+  list_macro_type[[i]]=unique(unlist(list_array.05_fc1.5_max500$names[studies]))
+} 
+```
+
+```{r interestinggenes2bc}
+
+interesting_genes$Blood=rep(0, dim(interesting_genes)[1])
+interesting_genes$Blood[which(interesting_genes$ensembl_gene_id %in% list_sample_type$`Blood/bone marrow`)]=1
+
+interesting_genes$Cerebellum=rep(0, dim(interesting_genes)[1])
+interesting_genes$Cerebellum[which(interesting_genes$ensembl_gene_id %in% list_sample_type$Cerebellum)]=1
+
+interesting_genes$Cortex=rep(0, dim(interesting_genes)[1])
+interesting_genes$Cortex[which(interesting_genes$ensembl_gene_id %in% list_sample_type$Cortex)]=1
+
+
+interesting_genes$Endothelia=rep(0, dim(interesting_genes)[1])
+interesting_genes$Endothelia[which(interesting_genes$ensembl_gene_id %in% list_sample_type$Endothelia)]=1
+
+interesting_genes$ESCs=rep(0, dim(interesting_genes)[1])
+interesting_genes$ESCs[which(interesting_genes$ensembl_gene_id %in% list_sample_type$ESCs)]=1
+
+interesting_genes$fetalliver=rep(0, dim(interesting_genes)[1])
+interesting_genes$fetalliver[which(interesting_genes$ensembl_gene_id %in% list_sample_type$`Fetal liver`)]=1
+
+interesting_genes$Fibroblasts=rep(0, dim(interesting_genes)[1])
+interesting_genes$Fibroblasts[which(interesting_genes$ensembl_gene_id %in% list_sample_type$Fibroblasts)]=1
+
+interesting_genes$Forebrain=rep(0, dim(interesting_genes)[1])
+interesting_genes$Forebrain[which(interesting_genes$ensembl_gene_id %in% list_sample_type$Forebrain)]=1
+
+
+
+interesting_genes$Heart=rep(0, dim(interesting_genes)[1])
+interesting_genes$Heart[which(interesting_genes$ensembl_gene_id %in% list_sample_type$Heart)]=1
+
+interesting_genes$Hippocampus=rep(0, dim(interesting_genes)[1])
+interesting_genes$Hippocampus[which(interesting_genes$ensembl_gene_id %in% list_sample_type$Hippocampus)]=1
+
+interesting_genes$iPSCs=rep(0, dim(interesting_genes)[1])
+interesting_genes$iPSCs[which(interesting_genes$ensembl_gene_id %in% list_sample_type$iPSCs)]=1
+
+
+interesting_genes$Liver=rep(0, dim(interesting_genes)[1])
+interesting_genes$Liver[which(interesting_genes$ensembl_gene_id %in% list_sample_type$Liver)]=1
+
+
+
+interesting_genes$Muscle=rep(0, dim(interesting_genes)[1])
+interesting_genes$Muscle[which(interesting_genes$ensembl_gene_id %in% list_sample_type$Muscle)]=1
+
+interesting_genes$NPCs=rep(0, dim(interesting_genes)[1])
+interesting_genes$NPCs[which(interesting_genes$ensembl_gene_id %in% list_sample_type$NPCs)]=1
+                    
+interesting_genes$Placenta=rep(0, dim(interesting_genes)[1])
+interesting_genes$Placenta[which(interesting_genes$ensembl_gene_id %in% list_sample_type$`Placenta/amnios`)]=1
+
+# interesting_genes$Sperm=rep(0, dim(interesting_genes)[1])
+# interesting_genes$Sperm[which(interesting_genes$ensembl_gene_id %in% list_sample_type$`Sperm Cells`)]=1
+
+interesting_genes$Thymus=rep(0, dim(interesting_genes)[1])
+interesting_genes$Thymus[which(interesting_genes$ensembl_gene_id %in% list_sample_type$Thymus)]=1
+
+
+interesting_genes$wholebrain=rep(0, dim(interesting_genes)[1])
+interesting_genes$wholebrain[which(interesting_genes$ensembl_gene_id %in% list_sample_type$`whole brain`)]=1
+
+interesting_genes$wholeembryo=rep(0, dim(interesting_genes)[1])
+interesting_genes$wholeembryo[which(interesting_genes$ensembl_gene_id %in% list_sample_type$`whole embryo`)]=1
+
+mat_interesting_genes=interesting_genes[, (dim(interesting_genes)[2]-17):dim(interesting_genes)[2]]
+
+interesting_genes$entropy=rowSums(mat_interesting_genes)
+
+```
+
+```{r tissuedis, fig.width = 16, fig.height=16}
+library(ggplot2)
+library(gplots)
+library(RColorBrewer)
+hm=heatmap.2(as.matrix(mat_interesting_genes), scale="none", density.info="none", trace="none", col=colorRampPalette(brewer.pal(9, "OrRd"))(256), key.title="", cex.axis=.5, cexRow=.9, 
+             cexCol=.9, keysize=.75,margins=c(16,16),srtCol=45,lhei=c(1,8),
+             ColSideColors =rainbow(10)[as.numeric(as.factor(c("Blood", "Brain", "Brain", "Endhotelia","Undifferentiated", "Liver", "Fibroblasts", "Brain", "Heart", "Brain", "Undifferentiated", "Liver", "Muscle", "Undifferentiated", "Placenta", "Blood", "Brain", "Undifferentiated")))])
+
+```
+
+
+```{r}
+interesting_genes_macro=interesting_genes[,c(1:10)]
+
+list_chr=split(interesting_genes_macro$ensembl_gene_id, interesting_genes_macro$chromosome_name)
+
+list_chr=list_chr[c(as.character(1:22), "X")]
+
+
+interesting_genes_macro$Blood=rep(0, dim(interesting_genes_macro)[1])
+interesting_genes_macro$Blood[which(interesting_genes_macro$ensembl_gene_id %in% list_macro_type$`Blood/bone marrow`)]=1
+
+
+interesting_genes_macro$Brain=rep(0, dim(interesting_genes_macro)[1])
+interesting_genes_macro$Brain[which(interesting_genes_macro$ensembl_gene_id %in% list_macro_type$Brain)]=1
+
+
+interesting_genes_macro$Endothelia=rep(0, dim(interesting_genes_macro)[1])
+interesting_genes_macro$Endothelia[which(interesting_genes_macro$ensembl_gene_id %in% list_macro_type$Endothelia)]=1
+
+
+interesting_genes_macro$Fibroblasts=rep(0, dim(interesting_genes_macro)[1])
+interesting_genes_macro$Fibroblasts[which(interesting_genes_macro$ensembl_gene_id %in% list_macro_type$Fibroblasts)]=1
+
+interesting_genes_macro$Heart=rep(0, dim(interesting_genes_macro)[1])
+interesting_genes_macro$Heart[which(interesting_genes_macro$ensembl_gene_id %in% list_macro_type$Heart)]=1
+
+interesting_genes_macro$Liver=rep(0, dim(interesting_genes_macro)[1])
+interesting_genes_macro$Liver[which(interesting_genes_macro$ensembl_gene_id %in% list_macro_type$Liver)]=1
+
+
+interesting_genes_macro$Muscle=rep(0, dim(interesting_genes_macro)[1])
+interesting_genes_macro$Muscle[which(interesting_genes_macro$ensembl_gene_id %in% list_macro_type$Muscle)]=1
+
+
+interesting_genes_macro$placenta=rep(0, dim(interesting_genes_macro)[1])
+interesting_genes_macro$placenta[which(interesting_genes_macro$ensembl_gene_id %in% list_macro_type$`Placenta/amnios`)]=1
+
+interesting_genes_macro$Undifferentiated=rep(0, dim(interesting_genes_macro)[1])
+interesting_genes_macro$Undifferentiated[which(interesting_genes_macro$ensembl_gene_id %in% list_macro_type$Undifferentiated)]=1
+
+
+
+mat_interesting_genes_macro=interesting_genes_macro[, (dim(interesting_genes_macro)[2]-8):dim(interesting_genes_macro)[2]]
+
+```
+
+```{r tissue distribution, fig.width = 16, fig.height=16}
+
+hm=heatmap.2(as.matrix(mat_interesting_genes_macro), scale="none", density.info="none", trace="none", col=colorRampPalette(brewer.pal(9, "OrRd"))(256), key.title="", cex.axis=.5, cexRow=.9, 
+             cexCol=.9, keysize=.75,margins=c(16,16),srtCol=45,lhei=c(1,8),
+             ColSideColors =rainbow(10)[as.numeric(as.factor(colnames(mat_interesting_genes_macro)))])
+
+```
+
+
+```{r}
+
+colors=rep("white",dim(interesting_genes_macro)[1])
+
+tissue=rep("others",dim(interesting_genes_macro)[1])
+
+for(i in 1:6){
+  colors[which(interesting_genes_macro$ensembl_gene_id %in% DS_tissue_genes[[which(names(DS_tissue_genes)==V(graph_coex2)$name[i])]])]=V(graph_coex2)$color[i]
+  
+  tissue[which(interesting_genes_macro$ensembl_gene_id %in% DS_tissue_genes[[which(names(DS_tissue_genes)==V(graph_coex2)$name[i])]])]=V(graph_coex2)$name[i]
+}
+
+colors[which(interesting_genes_macro$ensembl_gene_id %in% entropicgenes)]="black"
+tissue[which(interesting_genes_macro$ensembl_gene_id %in% entropicgenes)]="entropic gene"
+
+interesting_genes_macro$tissue=tissue
+
+
+
+interesting_genes_macro$entropy=rowSums(mat_interesting_genes_macro)
+
+library(ggplot2)
+
+df=data.frame("Entropy"=interesting_genes_macro$entropy, "Group"=factor(interesting_genes_macro$tissue, levels=c("iPSCs/ESCs", "fibroblasts", "placenta/amnios", "brain", "blood", "entropic gene", "others")))
+rownames(df)=interesting_genes_macro$ensembl_gene_id
+set.seed(1)
+p <- ggplot(df, aes(x=Group, y=Entropy)) +  geom_jitter(shape=16, position=position_jitter(0.2), col=colors)+ylab("Entropy (Macro-categories")  + stat_summary(fun.y = median, fun.min = median, fun.max = median,
+                 geom = "crossbar", width = 0.5)+theme(axis.text.x = element_text(angle=45))
+# Box plot with jittered points
+# 0.2 : degree of jitter in x direction
+p
+
+
+
+# df2=data.frame("Entropy"=interesting_genes_macro[V(graph_coex)$name,"entropy"], "Group"=as.factor(V(graph_coex)$color))
+# rownames(df2)=V(graph_coex)$name 
+# 
+# p <- ggplot(df2, aes(x=Group, y=Entropy))  + geom_jitter(shape=16, position=position_jitter(0.2), col=V(graph_coex)$color)+ylab("Entropy (Macro-categories") +
+#     stat_summary(fun.y = median, fun.ymin = median, fun.ymax = median,
+#                  geom = "crossbar", width = 0.5) + scale_x_discrete(labels=c("iPSCs/ESCs", "fibroblasts", "placenta/amnios", "brain", "blood", "consistenty in >1", "consistently only disregarding tissue"))+theme(axis.text.x = element_text(angle=45))
+# 
+# 
+# # Box plot with jittered points
+# # 0.2 : degree of jitter in x direction
+# p
+
+
+```
+
+### Relation entropy and HSA21
+
+
+```{r}
+
+percent_21=c(length(intersect(which(interesting_genes_macro$chromosome_name =="21"),which(interesting_genes_macro$entropy==1)))/length(which(interesting_genes_macro$entropy==1)),
+
+length(intersect(which(interesting_genes_macro$chromosome_name =="21"),which(interesting_genes_macro$entropy==2)))/length(which(interesting_genes_macro$entropy==2)),
+
+length(intersect(which(interesting_genes_macro$chromosome_name =="21"),which(interesting_genes_macro$entropy==3)))/length(which(interesting_genes_macro$entropy==3)),
+
+length(intersect(which(interesting_genes_macro$chromosome_name =="21"),which(interesting_genes_macro$entropy==4)))/length(which(interesting_genes_macro$entropy==4)),
+
+length(intersect(which(interesting_genes_macro$chromosome_name =="21"),which(interesting_genes_macro$entropy==5)))/length(which(interesting_genes_macro$entropy==5)),
+
+length(intersect(which(interesting_genes_macro$chromosome_name =="21"),which(interesting_genes_macro$entropy==6)))/length(which(interesting_genes_macro$entropy==6)))
+
+
+
+
+names(percent_21)=1:6
+barplot(percent_21*100, xlab="entropy", ylab="% of HSA21 genes")
+
+abline(h=length(which(interesting_genes_macro$chromosome_name =="21"))/dim(interesting_genes_macro)[1]
+*100, lty="dashed", col="blue")
+```
+
+## Tissue-specific genes
+
+TissueEnrich defines tissue-specific genes using RNA-Seq data from the HPA, GTEx, and mouse ENCODE. In order to make the tissue-specific gene calculations more robust, we only used tissues that had ≥2 biological replicates. The datasets used in the tool are:
+
+HPA Dataset: RNA-Seq data across 35 human tissues (Uhlén et al. 2015).
+GTEx Dataset: RNA-Seq data across 29 human tissues (Ardlie et al. 2015).
+Mouse ENCODE Dataset: RNA-Seq data across 17 mouse tissues (Shen et al. 2012).
+
+
+Tissue-specific genes are defined using the algorithm from the HPA (Uhlén et al. 2015), and can be grouped as follows:
+
+Tissue Enriched: Genes with an expression level greater than 1 (TPM or FPKM) that also have at least five-fold higher expression levels in a particular tissue compared to all other tissues.
+Group Enriched: Genes with an expression level greater than 1 (TPM or FPKM) that also have at least five-fold higher expression levels in a group of 2-7 tissues compared to all other tissues, and that are not considered Tissue Enriched.
+Tissue Enhanced: Genes with an expression level greater than 1 (TPM or FPKM) that also have at least five-fold higher expression levels in a particular tissue compared to the average levels in all other tissues, and that are not considered Tissue Enriched or Group Enriched.
+
+```{r, fig.height=10}
+library(TissueEnrich)
+
+gs<-GeneSet(geneIds=interesting_genes$ensembl_gene_id,organism="Homo Sapiens",geneIdType=ENSEMBLIdentifier())
+
+output<-teEnrichment(inputGenes = gs, tissueSpecificGeneType=2)
+output2<-teEnrichment(inputGenes = gs, rnaSeqDataset = 2)
+output3<-teEnrichment(inputGenes = gs, rnaSeqDataset = 3)
+
+
+tissuetable=as.data.frame(assay(output[[1]]))
+
+tissuetable3=as.data.frame(assay(output3[[1]]))
+
+count_tissuespecificgenes=function(output){
+  listgenes=c()
+  for(i in 1:length(output[[2]])){
+    
+    if(dim(output[[2]][[i]])[1]>0){
+      listgenes=append(listgenes, rownames(output[[2]][[i]]))
+    }
+  }
+  return(unique(listgenes))
+}
+
+list_splitted=split(interesting_genes_macro, interesting_genes_macro$entropy)
+
+
+percent_specific=rep(NA, length(list_splitted))
+for(i in 1:length(list_splitted)){
+ 
+  gs<-GeneSet(geneIds=rownames(list_splitted[[i]]),organism="Homo Sapiens",geneIdType=ENSEMBLIdentifier())
+
+  output<-teEnrichment(inputGenes = gs) 
+
+  percent_specific[i]=length(count_tissuespecificgenes(output))/dim(list_splitted[[i]])[1]
+}
+
+# > percent_specific
+# [1] 0.3728814 0.2857143 0.2678571 0.1666667 0.0000000 0.0000000
+
+
+interesting_genes_macro21=interesting_genes_macro[which(interesting_genes_macro$chromosome_name=="21"),]
+
+
+
+
+list_splitted21=split(interesting_genes_macro21, interesting_genes_macro21$entropy)
+
+
+percent_specific21=rep(NA, length(list_splitted21))
+for(i in 1:length(list_splitted21)){
+ 
+  gs<-GeneSet(geneIds=rownames(list_splitted21[[i]]),organism="Homo Sapiens",geneIdType=ENSEMBLIdentifier())
+
+  output<-teEnrichment(inputGenes = gs) 
+
+  percent_specific21[i]=length(count_tissuespecificgenes(output))/dim(list_splitted21[[i]])[1]
+}
+
+
+# > percent_specific21
+# [1] 0.66666667 0.35000000 0.07894737 0.03703704 0.00000000 0.00000000
+
+interesting_genes_macroNON21=interesting_genes_macro[which(interesting_genes_macro$chromosome_name!="21"),]
+
+
+
+
+list_splittedNON21=split(interesting_genes_macroNON21, interesting_genes_macroNON21$entropy)
+
+
+percent_specificNON21=rep(NA, length(list_splitted))
+for(i in 1:length(list_splittedNON21)){
+ 
+  gs<-GeneSet(geneIds=rownames(list_splittedNON21[[i]]),organism="Homo Sapiens",geneIdType=ENSEMBLIdentifier())
+
+  output<-teEnrichment(inputGenes = gs) 
+
+  percent_specificNON21[i]=length(count_tissuespecificgenes(output))/dim(list_splittedNON21[[i]])[1]
+}
+names(percent_specific)=1:6
+names(percent_specific21)=1:6
+names(percent_specificNON21)=1:6
+par(mfrow=c(3,1), mar=c(3,4,2,2))
+
+barplot(percent_specific*100, xlab="entropy", ylab="% tissue-specific genes", main="All genes", ylim=c(0,65))
+barplot(percent_specific21*100, xlab="entropy", ylab="% tissue-specific genes", main="HSA21 genes", ylim=c(0,65))
+barplot(percent_specificNON21*100, xlab="entropy", ylab="% tissue-specific genes", main="non-HSA21 genes", ylim=c(0,65))
+
+```
+
+```{r}
+#save.image("test.rda")
+```
+
+
+
+### HSA21 neighbors
+
+```{r}
+library(STRINGdb)
+
+string_db2 <- STRINGdb$new(version="11",species=9606,score_threshold=900, input_directory="" )
+
+
+list_ds=as.data.frame(all_genes$ensembl_gene_id[grep("21", all_genes$chromosome_name)])
+colnames(list_ds)="list_ds"
+
+
+
+mapped <- string_db2$map( list_ds, "list_ds", removeUnmappedRows = FALSE )
+
+
+neighbors=c()
+for (i in 1:length(mapped$STRING_id[!(is.na(mapped$STRING_id))])) {
+  tryCatch({
+    neighbors=append(neighbors, string_db2$get_neighbors(mapped$STRING_id[!(is.na(mapped$STRING_id))][i] ))
+  }, error=function(e){})
+}
+
+neighbors=unique(neighbors)
+
+
+
+
+neighbors_hsa21=getBM(attributes=c("ensembl_peptide_id", "hgnc_symbol"),filters="ensembl_peptide_id", values=unlist(lapply(neighbors, FUN=function(x)(substring(x,6)))), mart = human)
+
+neighbors_ens=unique(getBM(attributes=c("ensembl_peptide_id", "ensembl_gene_id"),filters="ensembl_peptide_id", values=unlist(lapply(neighbors, FUN=function(x)(substring(x,6)))), mart = human)$ensembl_gene_id)
+
+
+neighbors_hsa21=unique(neighbors_hsa21$hgnc_symbol)
+
+```
+
+
+```{r,fig.width=4.8, fig.height=5.6}
+detected_genes=unique((unlist(list_array.05_fc1.5_max500$names)))
+
+set.seed(1)
+
+sample=rownames(interesting_genes)
+universe=detected_genes
+
+value=neighbors_ens
+nperm=1000
+
+
+permutation_vec=rep(list(NA), nperm)
+set.seed=1
+for(i in 1:nperm){
+  random=sample(universe, length(sample))
+  permutation_vec[[i]]=length(intersect(random, value))
+}
+
+pvalue=(sum(unlist(permutation_vec )> length(intersect(value,sample)))+1)/(nperm+1)
+
+boxplot(list(length(intersect(neighbors_ens, rownames(interesting_genes))),unlist(permutation_vec)), ylab="number of co-DE genes", xaxt="n", col=c("blue", "red"))
+axis(1, c(1,2),c("HSA21 Neighbors", "1000 permutations"))
+```
+
+
+## co-DE gene clusters
+
+We detected two groups of 13 genes, each of them consistently presents in 4 datasets.
+
+```{r loadcomb}
+load("~/OneDrive - CRG - Centre de Regulacio Genomica/Dropbox (CRG)/metanalysis/combinazioni/top_genes.RData")
+load("~/OneDrive - CRG - Centre de Regulacio Genomica/Dropbox (CRG)/metanalysis/combinazioni/top.RData")
+load("./combinazioni/all_comb13_rank.RData")
+load("./combinazioni/all_comb11_rank.RData")
+lista1=unlist(strsplit(names(all_comb13_rank_top)[[1]], split=".", fixed = TRUE))
+lista2=unlist(strsplit(names(all_comb13_rank_top)[[2]], split=".", fixed = TRUE))
+
+gene_matrix$combinations=rep(1, length(gene_matrix$names))
+
+gene_matrix$combinations[which(gene_matrix$names %in% all_comb2_rank_top_genes)]=2
+gene_matrix$combinations[which(gene_matrix$names %in% all_comb3_rank_top_genes)]=3
+gene_matrix$combinations[which(gene_matrix$names %in% all_comb4_rank_top_genes)]=4
+gene_matrix$combinations[which(gene_matrix$names %in% all_comb5_rank_top_genes)]=5
+gene_matrix$combinations[which(gene_matrix$names %in% all_comb6_rank_top_genes)]=6
+gene_matrix$combinations[which(gene_matrix$names %in% all_comb7_rank_top_genes)]=7
+gene_matrix$combinations[which(gene_matrix$names %in% all_comb8_rank_top_genes)]=8
+gene_matrix$combinations[which(gene_matrix$names %in% all_comb9_rank_top_genes)]=9
+gene_matrix$combinations[which(gene_matrix$names %in% all_comb10_rank_top_genes)]=10
+gene_matrix$combinations[which(gene_matrix$names %in% all_comb11_rank_top_genes)]=11
+gene_matrix$combinations[which(gene_matrix$names %in% all_comb12_rank_top_genes)]=12
+gene_matrix$combinations[which(gene_matrix$names %in% all_comb13_rank_top_genes)]=13
+
+
+rownames(gene_matrix)=gene_matrix$names
+lista1_bm=getBM(attributes=c( "hgnc_symbol", "ensembl_gene_id"),filters="ensembl_gene_id", values=lista1, mart = human)
+lista2_bm=getBM(attributes=c( "hgnc_symbol", "ensembl_gene_id"),filters="ensembl_gene_id", values=lista2, mart = human)
+lista3_bm=getBM(attributes=c( "hgnc_symbol", "ensembl_gene_id"),filters="ensembl_gene_id", values=rownames(gene_matrix)[which(gene_matrix$combinations==11)], mart = human)
+
+rownames(lista1_bm)=lista1_bm$ensembl_gene_id
+rownames(lista2_bm)=lista2_bm$ensembl_gene_id
+rownames(lista3_bm)=lista3_bm$ensembl_gene_id
+
+```
+
+One was detected in the following contrasts:
+
+```{r firstgroupdatabases}
+library(kableExtra)
+
+kable(summary[names(all_comb13dot[grep(names(sort(table(all_comb13dot), decreasing=T)[1]), all_comb13dot)]),], "html") %>%
+    kable_styling(position = "left", bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width = T) 
+
+```
+And included the following genes:
+
+```{r firstgroupgenes}
+
+kable(interesting_genes[unlist(strsplit(names(sort(table(all_comb13dot), decreasing=T)[1]), split=".", fixed = TRUE)),], "html") %>%
+    kable_styling(position = "left", bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width = T)
+
+
+```
+
+The other was found in the following contrasts:
+
+```{r secondgroupdatabases}
+kable(summary[names(all_comb13dot[grep(names(sort(table(all_comb13dot), decreasing=T)[2]), all_comb13dot)]),], "html") %>%
+    kable_styling(position = "left", bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width = T) 
+
+```
+
+And included the following genes:
+
+```{r secondgroupgenes}
+kable(interesting_genes[unlist(strsplit(names(sort(table(all_comb13dot), decreasing=T)[2]), split=".", fixed = TRUE)),], "html") %>%
+    kable_styling(position = "left", bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width = T)
+```
+
+
+Finally we also detected a cluster of 11 genes:
+
+```{r 11dot}
+kable(interesting_genes[rownames(lista3_bm),], "html") %>%
+  kable_styling(position = "left", bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width = T)
+
+
+```
+
+Found in the following contrasts:
+
+```{r string3}
+string3=paste(sort(rownames(lista3_bm))[1], sort(rownames(lista3_bm))[2],sort(rownames(lista3_bm))[3],
+      sort(rownames(lista3_bm))[4], sort(rownames(lista3_bm))[5],sort(rownames(lista3_bm))[6],
+      sort(rownames(lista3_bm))[7], sort(rownames(lista3_bm))[8],sort(rownames(lista3_bm))[9],
+      sort(rownames(lista3_bm))[10], sort(rownames(lista3_bm))[11],sep=".")
+
+
+
+kable(summary[names(all_comb11dot[ grep(string3, all_comb11dot)]),], "html") %>%
+  kable_styling(position = "left", bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width = T) 
+
+
+
+
+```
+
+
+`r intersect(interesting_genes[unlist(strsplit(names(sort(table(all_comb13dot), decreasing=T)[1]), split=".", fixed = TRUE)),]$hgnc_symbol, interesting_genes[unlist(strsplit(names(sort(table(all_comb13dot), decreasing=T)[2]), split=".", fixed = TRUE)),]$hgnc_symbol)` was in common in the two groups.
+
+
+
+
+```{r}
+load("./combinazioni/all_comb2_rank_top_genes.RData")
+
+load("./combinazioni/all_comb2_rank.RData")
+```
+
+
+
+
+
+## DS network
+
+```{r}
+list_coex=lapply(names(all_comb2_rank), function(x)(strsplit(x, split=".", fixed=T)[[1]]))
+mat_coex=do.call(rbind, list_coex)
+
+
+library(igraph)
+graph_coex=graph_from_data_frame(as.data.frame(mat_coex), directed = FALSE, vertices = NULL)
+
+
+V(graph_coex)$size <- log2(gene_matrix[V(graph_coex)$name,2])
+
+```
+
+```{r}
+library(plot3D)
+# whiteblue=colorRampPalette(c("white", "blue"))
+# 
+# whitegray=colorRampPalette(c("yellow", "orange", "red",  "brown"))
+# 
+# 
+# cutcolors=whiteblue(13)[gene_matrix[V(graph_coex)$name,3]]
+nomi_vertex=rep(NA, vcount(graph_coex))
+
+nomi_vertex[V(graph_coex)$name %in% lista1_bm$ensembl_gene_id]= lista1_bm[( V(graph_coex)$name[V(graph_coex)$name %in% lista1_bm$ensembl_gene_id]),1]
+
+nomi_vertex[V(graph_coex)$name %in% lista2_bm$ensembl_gene_id]= lista2_bm[( V(graph_coex)$name[V(graph_coex)$name %in% lista2_bm$ensembl_gene_id]),1]
+
+nomi_vertex[V(graph_coex)$name %in% lista3_bm$ensembl_gene_id]= lista3_bm[( V(graph_coex)$name[V(graph_coex)$name %in% lista3_bm$ensembl_gene_id]),1]
+
+
+
+nomi_col=rep(NA, vcount(graph_coex))
+
+nomi_col[V(graph_coex)$name %in% lista1_bm$ensembl_gene_id]= "red"
+
+nomi_col[V(graph_coex)$name %in% lista2_bm$ensembl_gene_id]= "red"
+
+nomi_col[V(graph_coex)$name %in% lista3_bm$ensembl_gene_id]= "red"
+
+
+
+E(graph_coex)$weight=all_comb2_rank
+E(graph_coex)$width=log2(E(graph_coex)$weight)
+
+
+library(arrangements)
+library(viridis)
+
+edges_names=paste(mat_coex[,1], mat_coex[,2], sep=".")
+
+edge_color=rep("transparent", ecount(graph_coex))
+
+edge_weights=rep(1, ecount(graph_coex))
+
+edge_color[which(edges_names %in% names(all_comb2_rank_top))]=rev(viridis(12))[1]
+edge_weights[which(edges_names %in% names(all_comb2_rank_top))]=2
+
+
+for(i in 1:length(all_comb3_rank_top)){
+  toadd_names=unique(unlist(strsplit(names(all_comb3_rank_top)[[i]], split=".", fixed = TRUE)))
+   toadd_comb=combinations(toadd_names,2, layout="list")
+  toadd_comb=lapply(toadd_comb,sort)
+  
+  toadd_comb_dot=sapply(toadd_comb, function(x)(paste(x[1], x[2],sep=".")))
+  
+  edge_color[which(edges_names %in% toadd_comb_dot)]=rev(viridis(12))[2]
+  
+  edge_weights[which(edges_names %in% toadd_comb_dot)]=3
+}
+
+
+for(i in 1:length(all_comb4_rank_top)){
+  toadd_names=unique(unlist(strsplit(names(all_comb4_rank_top)[[i]], split=".", fixed = TRUE)))
+   toadd_comb=combinations(toadd_names,2, layout="list")
+  toadd_comb=lapply(toadd_comb,sort)
+  
+  toadd_comb_dot=sapply(toadd_comb, function(x)(paste(x[1], x[2],sep=".")))
+  
+  edge_color[which(edges_names %in% toadd_comb_dot)]=rev(viridis(12))[3]
+     edge_weights[which(edges_names %in% toadd_comb_dot)]=4
+
+}
+
+for(i in 1:length(all_comb5_rank_top)){
+  toadd_names=unique(unlist(strsplit(names(all_comb5_rank_top)[[i]], split=".", fixed = TRUE)))
+   toadd_comb=combinations(toadd_names,2, layout="list")
+  toadd_comb=lapply(toadd_comb,sort)
+  
+  toadd_comb_dot=sapply(toadd_comb, function(x)(paste(x[1], x[2],sep=".")))
+  
+  edge_color[which(edges_names %in% toadd_comb_dot)]=rev(viridis(12))[4]
+     edge_weights[which(edges_names %in% toadd_comb_dot)]=5
+
+}
+
+
+for(i in 1:length(all_comb6_rank_top)){
+  toadd_names=unique(unlist(strsplit(names(all_comb6_rank_top)[[i]], split=".", fixed = TRUE)))
+   toadd_comb=combinations(toadd_names,2, layout="list")
+  toadd_comb=lapply(toadd_comb,sort)
+  
+  toadd_comb_dot=sapply(toadd_comb, function(x)(paste(x[1], x[2],sep=".")))
+  
+  edge_color[which(edges_names %in% toadd_comb_dot)]=rev(viridis(12))[5]
+  edge_weights[which(edges_names %in% toadd_comb_dot)]=6
+
+}
+
+
+for(i in 1:length(all_comb7_rank_top)){
+  toadd_names=unique(unlist(strsplit(names(all_comb7_rank_top)[[i]], split=".", fixed = TRUE)))
+   toadd_comb=combinations(toadd_names,2, layout="list")
+  toadd_comb=lapply(toadd_comb,sort)
+  
+  toadd_comb_dot=sapply(toadd_comb, function(x)(paste(x[1], x[2],sep=".")))
+  
+  edge_color[which(edges_names %in% toadd_comb_dot)]=rev(viridis(12))[6]
+  edge_weights[which(edges_names %in% toadd_comb_dot)]=7
+
+}
+
+
+for(i in 1:length(all_comb8_rank_top)){
+  toadd_names=unique(unlist(strsplit(names(all_comb8_rank_top)[[i]], split=".", fixed = TRUE)))
+   toadd_comb=combinations(toadd_names,2, layout="list")
+  toadd_comb=lapply(toadd_comb,sort)
+  
+  toadd_comb_dot=sapply(toadd_comb, function(x)(paste(x[1], x[2],sep=".")))
+  
+  edge_color[which(edges_names %in% toadd_comb_dot)]=rev(viridis(12))[7]
+  edge_weights[which(edges_names %in% toadd_comb_dot)]=8
+
+}
+
+for(i in 1:length(all_comb9_rank_top)){
+  toadd_names=unique(unlist(strsplit(names(all_comb9_rank_top)[[i]], split=".", fixed = TRUE)))
+   toadd_comb=combinations(toadd_names,2, layout="list")
+  toadd_comb=lapply(toadd_comb,sort)
+  
+  toadd_comb_dot=sapply(toadd_comb, function(x)(paste(x[1], x[2],sep=".")))
+  
+  edge_color[which(edges_names %in% toadd_comb_dot)]=rev(viridis(12))[8]
+  edge_weights[which(edges_names %in% toadd_comb_dot)]=9
+
+}
+
+for(i in 1:length(all_comb10_rank_top)){
+  toadd_names=unique(unlist(strsplit(names(all_comb10_rank_top)[[i]], split=".", fixed = TRUE)))
+   toadd_comb=combinations(toadd_names,2, layout="list")
+  toadd_comb=lapply(toadd_comb,sort)
+  
+  toadd_comb_dot=sapply(toadd_comb, function(x)(paste(x[1], x[2],sep=".")))
+  
+  edge_color[which(edges_names %in% toadd_comb_dot)]=rev(viridis(12))[9]
+  edge_weights[which(edges_names %in% toadd_comb_dot)]=10
+
+}
+
+for(i in 1:length(all_comb11_rank_top)){
+  toadd_names=unique(unlist(strsplit(names(all_comb11_rank_top)[[i]], split=".", fixed = TRUE)))
+   toadd_comb=combinations(toadd_names,2, layout="list")
+  toadd_comb=lapply(toadd_comb,sort)
+  
+  toadd_comb_dot=sapply(toadd_comb, function(x)(paste(x[1], x[2],sep=".")))
+  
+  edge_color[which(edges_names %in% toadd_comb_dot)]=rev(viridis(12))[10]
+  edge_weights[which(edges_names %in% toadd_comb_dot)]=11
+
+}
+
+for(i in 1:length(all_comb12_rank_top)){
+  toadd_names=unique(unlist(strsplit(names(all_comb12_rank_top)[[i]], split=".", fixed = TRUE)))
+   toadd_comb=combinations(toadd_names,2, layout="list")
+  toadd_comb=lapply(toadd_comb,sort)
+  
+  toadd_comb_dot=sapply(toadd_comb, function(x)(paste(x[1], x[2],sep=".")))
+  
+  edge_color[which(edges_names %in% toadd_comb_dot)]=rev(viridis(12))[11]
+  edge_weights[which(edges_names %in% toadd_comb_dot)]=12
+
+}
+
+
+
+
+for(i in 1:length(all_comb13_rank_top)){
+  toadd_names=unique(unlist(strsplit(names(all_comb13_rank_top)[[i]], split=".", fixed = TRUE)))
+   toadd_comb=combinations(toadd_names,2, layout="list")
+  toadd_comb=lapply(toadd_comb,sort)
+  
+  toadd_comb_dot=sapply(toadd_comb, function(x)(paste(x[1], x[2],sep=".")))
+  
+  edge_color[which(edges_names %in% toadd_comb_dot)]=rev(viridis(12))[12]
+  edge_weights[which(edges_names %in% toadd_comb_dot)]=13
+
+}
+
+
+V(graph_coex)$shape <- ifelse((interesting_genes[V(graph_coex)$name,"chromosome_name"]=="21"), "square", "circle")
+
+edge_weights2=edge_weights+all_comb2_rank/max(all_comb2_rank)
+
+
+
+E(graph_coex)$weight=edge_weights2
+E(graph_coex)$width=log2(E(graph_coex)$weight)
+
+```
+
+
+
+
+
+
+```{r, transparentcolors}
+
+
+
+
+new_colors=edge_color
+
+for(i in 1:length(new_colors)){
+percent=1/max(all_comb2_rank)*all_comb2_rank[i]
+
+new_colors[i] <- adjustcolor(edge_color[i], alpha.f = percent)
+}
+
+
+
+
+```
+
+
+```{r}
+
+set.seed(1)
+mod.copy_coex=cluster_fast_greedy(graph_coex, weights = E(graph_coex)$weight)
+# set.seed(1)
+
+# mod.copy_coex3=cluster_edge_betweenness(graph_coex, weights = E(graph_coex)$weight) 
+# set.seed(1)
+# 
+# mod.copy_coex4=cluster_leading_eigen(graph_coex, weights = E(graph_coex)$weight) 
+# At arpack.c:776 :ARPACK solver failed to converge (1001 iterations, 0/1 eigenvectors converged)Error in cluster_leading_eigen(graph_coex, weights = E(graph_coex)$weight) : 
+#   At arpack.c:944 : ARPACK error, Maximum number of iterations reached
+# set.seed(1)
+# 
+# mod.copy_coex4=cluster_spinglass(graph_coex, weights = E(graph_coex)$weight) 
+# set.seed(1)
+# 
+# mod.copy_coex5=cluster_louvain(graph_coex, weights = E(graph_coex)$weight) 
+# set.seed(1)
+# mod.copy_coex6=cluster_label_prop(graph_coex, weights = E(graph_coex)$weight) 
+
+
+lista.mod.copy=list()
+
+lista.mod.copy$`1`=mod.copy_coex[[1]]
+lista.mod.copy$`2`=mod.copy_coex[[2]]
+lista.mod.copy$`3`=mod.copy_coex[[3]]
+lista.mod.copy$`4`=mod.copy_coex[[4]]
+lista.mod.copy$all=V(graph_coex)$name
+
+
+
+weights <- ifelse(igraph::crossing(mod.copy_coex, graph_coex), 1, .5)
+layout <- layout_with_kk(graph_coex, weights=weights)
+```
+
+```{r}
+
+
+
+whitered=colorRampPalette(c("white", "red"))
+bluewhite=colorRampPalette(c("blue", "white"))
+
+
+
+cutcolors_pos=whitered(100)[as.numeric(cut(interesting_genes$median_log2FC[which(interesting_genes$median_log2FC>=0)],breaks = 100))]
+
+cutcolors_neg=bluewhite(100)[as.numeric(cut(interesting_genes$median_log2FC[which(interesting_genes$median_log2FC<0)],breaks = 100))]
+
+
+cutcolors_df_pos=data.frame("name"=interesting_genes$ensembl_gene_id[which(interesting_genes$median_log2FC>=0)],"colors"=cutcolors_pos)
+cutcolors_df_neg=data.frame("name"=interesting_genes$ensembl_gene_id[which(interesting_genes$median_log2FC<0)],"colors"=cutcolors_neg)
+
+
+rownames(cutcolors_df_neg)=cutcolors_df_neg$name
+rownames(cutcolors_df_pos)=cutcolors_df_pos$name
+
+cutcolors_df=rbind(cutcolors_df_neg,cutcolors_df_pos)
+cutcolors_df=cutcolors_df[V(graph_coex)$name,]
+```
+
+
+
+```{r, fig.width=7, fig.height=5}
+# pdf(width=7, height=5, file="network_transparent.pdf")
+par(mar=c(0,0,0,4))
+set.seed(1)
+plot(graph_coex, layout=layout, vertex.label=nomi_vertex, vertex.color=as.character(cutcolors_df$colors), edge.color=new_colors, vertex.label.color=nomi_col)
+colkey(rev(viridis(12)), clim=c(2,13), add=T, clab="length co-DE cluster", width=.7, length=.3, shift = .2, dist=(-1)*0.05)
+colkey(c(bluewhite(100), whitered(100)), add=T, clab="median log2FC", width=.7, length=.3, clim=c(min(interesting_genes$median_log2FC),max(interesting_genes$median_log2FC)),  shift=(-1)*0.2, dist=(-1)*0.05 )
+
+legend("topleft", 
+       c("other chrs", "chr21"), bty="n",cex=1,
+       pch=c(1,0), title="deregulated in:")
+
+legend("bottomleft", 
+       c("low", "high"), bty="n",pt.cex=c(1,3),
+       pch=1, title="log2(occurences):",cex=1)
+
+
+
+
+
+
+
+```
+
+
+
+### Analysis of STRINGdb
+
+
+
+```{r addingstring}
+library(STRINGdb)
+
+edges_matrix=as.data.frame(cbind(edges_names,edge_weights))
+rownames(edges_matrix)=edges_matrix[,1]
+
+string_db <- STRINGdb$new(version="11",species=9606,score_threshold=0, input_directory="" )
+
+list_ds=as.data.frame(interesting_genes$ensembl_gene_id)
+colnames(list_ds)="list_ds"
+
+mapped <- string_db$map( list_ds, "list_ds", removeUnmappedRows = FALSE )
+
+interactions=string_db$get_interactions(mapped$STRING_id )
+
+interactions_merged=merge(interactions, mapped,by.x="from", by.y="STRING_id", all.x = TRUE)
+
+colnames(interactions_merged)[4]="from_ens"
+interactions_merged=merge(interactions_merged, mapped,by.x="to", by.y="STRING_id", all.x = TRUE)
+
+
+graph_string=graph_from_data_frame(interactions_merged[,4:5], directed = FALSE, vertices = NULL)
+
+
+firstsecond_string=paste(interactions_merged$from_ens, interactions_merged$list_ds, sep=".")
+
+secondfirst_string=paste(interactions_merged$list_ds, interactions_merged$from_ens, sep=".")
+
+combined_scores=rep(0, length(E(graph_coex)$weight))
+
+names(combined_scores)=edges_names
+
+combined_scores=as.data.frame(combined_scores)
+
+combined_scores$int=rownames(combined_scores)
+
+interactions_merged$firstsecond=firstsecond_string
+interactions_merged$second_first=secondfirst_string
+
+combined_scores_merged=merge(combined_scores, interactions_merged, by.x="int", by.y="firstsecond", all.x=TRUE)
+
+combined_scores_merged=combined_scores_merged[,c(1, 5)]
+colnames(combined_scores_merged)=c("interactions", "score1")
+
+combined_scores_merged=merge(combined_scores_merged, interactions_merged, by.x="interactions", by.y="second_first", all.x=TRUE)
+
+combined_scores_merged=combined_scores_merged[,c(1,2, 5)]
+combined_scores_merged=combined_scores_merged[!duplicated(combined_scores_merged$interactions),]
+rownames(combined_scores_merged)=combined_scores_merged$interactions
+
+combined_scores_merged=combined_scores_merged[,c(2,3)]
+
+combined_scores_merged$string_score=rowSums(combined_scores_merged, na.rm=T)
+
+
+combined_scores_merged=combined_scores_merged[edges_names,]
+
+# plot(as.numeric(E(graph_coex)$weight), combined_scores_merged$string_score, xlab="number of co-expression occurences", ylab="STRINGdb score")
+
+combined_scores_merged$string_score=combined_scores_merged$string_score/1000
+
+total_score=as.numeric(E(graph_coex)$weight)+ as.numeric(E(graph_coex)$weight)*combined_scores_merged$string_score
+
+
+
+```
+
+
+```{r}
+
+
+string_interaction=interactions_merged[,4:5]
+
+
+
+
+firstsecond_string=paste(interactions_merged$from_ens, interactions_merged$list_ds, sep=".")
+
+secondfirst_string=paste(interactions_merged$list_ds, interactions_merged$from_ens, sep=".")
+
+int_coex=paste(mat_coex[,1], mat_coex[,2], sep=".")
+
+
+combined_scores_merged2=combined_scores_merged[c(intersect(firstsecond_string, int_coex), intersect(secondfirst_string, int_coex)),]
+
+edges_matrix2=edges_matrix[rownames(combined_scores_merged2),]
+
+
+# plot(jitter(as.numeric(as.character(edges_matrix2$edge_weights))), combined_scores_merged2$string_score)
+# mean(as.numeric(as.character(edges_matrix[setdiff(edges_names, rownames(combined_scores_merged2)),2])))
+
+# mean(as.numeric(as.character(edges_matrix2[which(combined_scores_merged2$string_score<0.4 & combined_scores_merged$string_score>0),2])), na.rm=T)
+# mean(as.numeric(as.character(edges_matrix2[which(combined_scores_merged$string_score>=0.4),2])), na.rm=T)
+
+
+
+
+```
+
+
+We detected `r length(firstsecond_string)` interactions in StringDB between our DS genes, of whose `r length(intersect(firstsecond_string, int_coex))+length(intersect(secondfirst_string, int_coex))` were also found as consistently DE (`r round((length(intersect(firstsecond_string, int_coex))+length(intersect(secondfirst_string, int_coex)))/length(firstsecond_string)*100,0)` %).
+
+### Overlap with GOs
+
+```{r addingstring2}
+library(STRINGdb)
+list_coex2=lapply(names(all_comb2_rank)[which(all_comb2_rank>3)], function(x)(strsplit(x, split=".", fixed=T)[[1]]))
+mat_coex2=do.call(rbind, list_coex2)
+
+
+
+edges_names2=paste(mat_coex2[,1], mat_coex2[,2], sep=".")
+
+
+edge_weights2=edge_weights[which(all_comb2_rank>3)]
+
+edges_matrix2=as.data.frame(cbind(edges_names2,edge_weights2))
+rownames(edges_matrix2)=edges_matrix2[,1]
+
+string_db <- STRINGdb$new(version="11",species=9606,score_threshold=0, input_directory="" )
+
+list_ds2=as.data.frame(all_comb2_rank_top_genes)
+colnames(list_ds2)="list_ds"
+
+mapped2 <- string_db$map( list_ds2, "list_ds", removeUnmappedRows = FALSE )
+
+interactions2=string_db$get_interactions(mapped2$STRING_id )
+
+interactions_merged2=merge(interactions2, mapped2,by.x="from", by.y="STRING_id", all.x = TRUE)
+
+colnames(interactions_merged2)[4]="from_ens"
+interactions_merged2=merge(interactions_merged2, mapped2,by.x="to", by.y="STRING_id", all.x = TRUE)
+
+
+
+
+firstsecond_string2=paste(interactions_merged2$from_ens, interactions_merged2$list_ds, sep=".")
+
+secondfirst_string2=paste(interactions_merged2$list_ds, interactions_merged2$from_ens, sep=".")
+
+combined_scores2=rep(0, length(edges_names2))
+
+names(combined_scores2)=edges_names2
+
+combined_scores2=as.data.frame(combined_scores2)
+
+combined_scores2$int=rownames(combined_scores2)
+
+interactions_merged2$firstsecond=firstsecond_string2
+interactions_merged2$second_first=secondfirst_string2
+
+combined_scores_merged2=merge(combined_scores2, interactions_merged2, by.x="int", by.y="firstsecond", all.x=TRUE)
+
+combined_scores_merged2=combined_scores_merged2[,c(1, 5)]
+colnames(combined_scores_merged2)=c("interactions", "score1")
+
+combined_scores_merged2=merge(combined_scores_merged2, interactions_merged2, by.x="interactions", by.y="second_first", all.x=TRUE)
+
+combined_scores_merged2=combined_scores_merged2[,c(1,2, 5)]
+combined_scores_merged2=combined_scores_merged2[!duplicated(combined_scores_merged2$interactions),]
+rownames(combined_scores_merged2)=combined_scores_merged2$interactions
+combined_scores_merged2=combined_scores_merged2[,c(2,3)]
+
+combined_scores_merged2$string_score=rowSums(combined_scores_merged2, na.rm=T)
+
+
+combined_scores_merged2=combined_scores_merged2[edges_names2,]
+
+# plot(as.numeric(E(graph_coex)$weight), combined_scores_merged$string_score, xlab="number of co-expression occurences", ylab="STRINGdb score")
+
+combined_scores_merged2$string_score=combined_scores_merged2$string_score/1000
+
+# total_score=as.numeric(E(graph_coex)$weight)+ as.numeric(E(graph_coex)$weight)*combined_scores_merged$string_score
+
+
+
+```
+
+
+```{r}
+
+interactions_graph=names(all_comb2_rank)[which(all_comb2_rank>3)]
+
+
+# length(intersect(interactions_merged$firstsecond, interactions_graph))
+# 
+# length(intersect(interactions_merged$second_first, interactions_graph))
+# 
+
+
+indexes_common2=sort(unique(c(which(interactions_merged2$firstsecond %in% interactions_graph), which(interactions_merged2$second_first %in% interactions_graph))))
+
+scores_db2=interactions_merged2$combined_score[indexes_common2]
+
+
+interactions_merged2$selected=rep(NA, length(interactions_merged2$firstsecond))
+
+interactions_merged2$selected[which(interactions_merged2$firstsecond %in% interactions_graph)]=interactions_merged2$firstsecond[which(interactions_merged2$firstsecond %in% interactions_graph)]
+
+interactions_merged2$selected[which(interactions_merged2$second_first %in% interactions_graph)]=interactions_merged2$second_first[which(interactions_merged2$second_first %in% interactions_graph)]
+
+names_db2=interactions_merged2$selected[indexes_common2]
+
+
+names(scores_db2)=names_db2
+
+# plot(as.numeric(all_comb2_rank[names_db2]), scores_db2)
+# 
+# length(unique(c(interactions_merged2$from_ens, interactions_merged2$list_ds)))
+
+```
+
+
+```{r}
+
+
+go_df=getBM(attributes=c("ensembl_gene_id", "go_id"),filters="ensembl_gene_id", values=all_comb2_rank_top_genes, mart = human, useCache = F)
+go_df=go_df[which(go_df$go_id!=""),]
+go_df_split=split(go_df$go_id, go_df$ensembl_gene_id)
+overlap_go=rep(NA, length(all_comb2_rank_top))
+names(overlap_go)=names(all_comb2_rank_top)
+
+for(i in 1:length(overlap_go)){
+  overlap_go[i]=length(intersect(go_df_split[[mat_coex2[i,1]]], go_df_split[[mat_coex2[i,2]]]))
+  
+}
+withgo=length(which(overlap_go>0))
+  set.seed(1)
+  nperm=1000
+  
+  overlaps_perms=rep(NA, nperm)
+  for(j in 1:nperm){
+    random_genes=sample(unique(unlist(list_array$names)), length(all_comb2_rank_top_genes))
+    go_df_rand=getBM(attributes=c("ensembl_gene_id", "go_id"),filters="ensembl_gene_id", values=random_genes, mart = human, useCache = FALSE)
+    go_df_rand=go_df_rand[which(go_df_rand$go_id!=""),]
+    go_df_split_rand=split(go_df_rand$go_id, go_df_rand$ensembl_gene_id)
+    overlap_go_rand=rep(NA, length(all_comb2_rank_top))
+    
+  
+    combinazioni=combn(random_genes,2)
+    combinazioni=t(combinazioni)
+    rand_index=sample(1:dim(combinazioni)[1], length(all_comb2_rank_top))
+    
+    combinazioni=combinazioni[rand_index,]
+    
+    names(overlap_go_rand)=paste(combinazioni[,1], combinazioni[,2], sep=".")
+    
+    
+    
+    for(i in 1:length(overlap_go_rand)){
+    overlap_go_rand[i]=length(intersect(go_df_split_rand[[combinazioni[i,1]]], go_df_split_rand[[combinazioni[i,2]]]))
+    }
+    
+    overlaps_perms[j]=length(which(overlap_go_rand>0))
+   # print(j) 
+  }
+
+
+
+
+
+overlap_go_db=rep(NA, length(all_comb2_rank[names_db2]))
+
+
+names(overlap_go_db)=names(all_comb2_rank[names_db2])
+
+
+for(i in 1:length(overlap_go_db)){
+  
+  touse=strsplit(names_db2[i], split=".", fixed=T)[[1]]
+  overlap_go_db[i]=length(intersect(go_df_split[[touse[1]]], go_df_split[[touse[2]]]))
+  
+}
+
+  touse=strsplit(names_db2[i], split=".", fixed=T)[[1]]
+
+
+tot=unique(c(names(overlap_go[which(overlap_go>0)]),names_db2))
+
+
+# length(unique(unlist(lapply(tot, FUN=function(x)(strsplit(x, split=".", fixed=T)[[1]])))))
+
+
+```
+
+The number of coDe with a GO was `r withgo/mean(overlaps_perms)` than expected by chance.
+
+
+### Edge width proportional to string score (only shown edge with co-DE in at least 4 datsets)
+
+
+```{r}
+
+
+widths2=(combined_scores_merged$string_score)*3
+#edge width proportional to stringscore
+par(mar=c(0,0,0,4))
+set.seed(1)
+plot(graph_coex, layout=layout, vertex.label="", vertex.color=as.character(cutcolors_df$colors), edge.color=new_colors, edge.width=widths2)
+legend("bottomright", 
+       c("high", "low"), bty="n",lwd=c(3,1),
+       , cex=1, title="stringDB score:",pch="_")
+```
+
+
+### Manhattan plot
+
+
+```{r}
+gene_frequency=sort(table(unlist(list_array.05_fc1.5_max500$names)), decreasing=T)
+
+allgenes=as.data.frame(gene_frequency)
+
+colnames(allgenes)=c("names", "occurences")
+
+
+allgenes_anno=getBM(attributes=c("ensembl_gene_id", "hgnc_symbol", "description", "chromosome_name", "band"),filters="ensembl_gene_id", values=allgenes$names, mart = human)
+
+
+allgenes_anno$description=unlist(lapply(allgenes_anno$description, FUN=function(x)strsplit(x, split='[', fixed=T)[[1]][1]))
+
+
+allgenes=merge(allgenes, allgenes_anno, all.x=TRUE, by.x="names", by.y="ensembl_gene_id")
+
+allgenes=allgenes[!duplicated(allgenes$names),]
+
+allgenes$median_log2FC=rep(NA, dim(allgenes)[1])
+allgenes$sd_log2FC=rep(NA, dim(allgenes)[1])
+allgenes$mean_log2FC=rep(NA, dim(allgenes)[1])
+
+
+for(i in 1:dim(allgenes)[1]){
+  ensgene=allgenes$names[i]
+  fcs=find_fold_changes(ensgene, list_array.05_fc1.5_max500)
+  allgenes$median_log2FC[i]=median(fcs)
+  allgenes$sd_log2FC[i]=sd(fcs)
+  allgenes$mean_log2FC[i]=mean(fcs)
+  
+}
+
+allgenes$pseudotscore=allgenes$mean_log2FC/(allgenes$sd_log2FC/sqrt(allgenes$occurences))
+
+rownames(allgenes)=allgenes$names
+allgenes$consistently_DE=rep("no", length(allgenes$names))
+
+allgenes$consistently_DE[which(allgenes$names %in% rownames(interesting_genes))]="yes"
+```
+
+
+```{r, fig.width=17, fig.height=4.5}
+
+allgenes_autosomes=allgenes[which(allgenes$chromosome_name %in% as.character(1:22)),]
+allgenes_sexchr=allgenes[which(allgenes$chromosome_name %in% c("X", "Y")),]
+
+
+allgenes_autosomes$chromosome_name=as.numeric(allgenes_autosomes$chromosome_name)
+allgenes_autosomes=allgenes_autosomes[order(allgenes_autosomes$chromosome_name, allgenes_autosomes$band),]
+
+allgenes_sexchr=allgenes_sexchr[order(allgenes_sexchr$chromosome_name, allgenes_sexchr$band),]
+
+
+allgenes_ordered=rbind(allgenes_autosomes, allgenes_sexchr)
+
+allgenes_ordered=allgenes_ordered[which(!is.na(allgenes_ordered$sd_log2FC)),]
+
+transblue=colorRampPalette(c("transparent", "blue"))
+
+colors_mahattan=transblue(max(ceiling(log2(allgenes_ordered$occurences))))[ceiling(log2(allgenes_ordered$occurences))]
+colors_mahattan1=transblue(max(allgenes_ordered$occurences))[allgenes_ordered$occurences]
+
+number_vec=allgenes_ordered$occurences
+color="blue"
+create_gradient=function(number_vec, color){
+  library(scales)
+  toreturn=rep(NA, length(number_vec))
+  
+  for(i in 1:length(toreturn)){
+    toreturn[i]=alpha(color, number_vec[i]/max(number_vec))
+  }
+  return(toreturn)
+}
+
+colors_mahattan=create_gradient(allgenes_ordered$occurences, "blue")
+colors_mahattan2=create_gradient(ceiling(log2(allgenes_ordered$occurences)), "blue")
+
+plot(1:length(allgenes_ordered$median_log2FC), allgenes_ordered$median_log2FC, pch=16, ylab=expression(paste("log"[2], "FC (median)")), xlab="HSA chromosome", xaxt="n", type = "n")
+# 
+# 
+points(which(allgenes_ordered$consistently_DE =="no"), allgenes_ordered$median_log2FC[which(allgenes_ordered$consistently_DE =="no")], pch=16, cex=.5, col=colors_mahattan2[which(allgenes_ordered$consistently_DE =="no")])
+points(which(allgenes_ordered$consistently_DE =="yes"), allgenes_ordered$median_log2FC[which(allgenes_ordered$consistently_DE =="yes")], pch=16, cex=1,col=colors_mahattan2[which(allgenes_ordered$consistently_DE =="no")])
+
+axis_lab=rep(NA,length(allgenes_ordered$median_log2FC))
+
+for(i in 1:length(unique(allgenes_ordered$chromosome_name))){
+  axis_lab[round(mean(which(allgenes_ordered$chromosome_name %in% unique(allgenes_ordered$chromosome_name)[i])))]=unique(allgenes_ordered$chromosome_name)[i]
+}
+
+
+axis(1, which(!is.na(axis_lab)), labels=axis_lab[which(!is.na(axis_lab))])
+abline(h=0)
+abline(h=log2(1.5), lty="dashed", col="gray")
+abline(h=-log2(1.5), lty="dashed", col="gray")
+
+for(i in unique(allgenes_ordered$chromosome_name)){
+  abline(v=(which(allgenes_ordered$chromosome_name %in% i)[1]-0.5))
+}
+
+
+
+```
+
+```{r, fig.width=17, fig.height=4.5}
+bluetrans=colorRampPalette(c("blue", "transparent"))
+
+allgenes_ordered=allgenes_ordered[which(allgenes_ordered$sd_log2FC>0),]
+cutcolors_pos_pts=transblue(max(rank(allgenes_ordered$pseudotscore[which(allgenes_ordered$pseudotscore>=0)])))[rank(allgenes_ordered$pseudotscore[which(allgenes_ordered$pseudotscore>=0)])]
+                                                                                                               
+                                                                                                               
+                                                                                                               
+cutcolors_neg_pts=bluetrans(max(rank(allgenes_ordered$pseudotscore[which(allgenes_ordered$pseudotscore<0)])))[rank(allgenes_ordered$pseudotscore[which(allgenes_ordered$pseudotscore<0)])]
+
+
+cutcolors_df_pos_pts=data.frame("name"=allgenes_ordered$names[which(allgenes_ordered$pseudotscore>=0)],"colors"=cutcolors_pos_pts)
+cutcolors_df_neg_pts=data.frame("name"=allgenes_ordered$names[which(allgenes_ordered$pseudotscore<0)],"colors"=cutcolors_neg_pts)
+
+
+rownames(cutcolors_df_neg_pts)=cutcolors_df_neg_pts$name
+rownames(cutcolors_df_pos_pts)=cutcolors_df_pos_pts$name
+
+cutcolors_df_pts=rbind(cutcolors_df_neg_pts,cutcolors_df_pos_pts)
+
+cutcolors_df_pts=cutcolors_df_pts[as.character(allgenes_ordered$names),]
+
+cexes=allgenes_ordered$consistently_DE
+cexes[which(cexes=="no")]=0.5
+cexes[which(cexes=="yes")]=1
+cexes=as.numeric(cexes)
+plot(1:length(allgenes_ordered$median_log2FC), allgenes_ordered$median_log2FC, pch=16, ylab=expression(paste("log"[2], "FC (median)")), xlab="HSA chromosome", xaxt="n",col=as.character(cutcolors_df_pts$colors), cex=cexes)
+
+
+axis_lab=rep(NA,length(allgenes_ordered$median_log2FC))
+
+for(i in 1:length(unique(allgenes_ordered$chromosome_name))){
+  axis_lab[round(mean(which(allgenes_ordered$chromosome_name %in% unique(allgenes_ordered$chromosome_name)[i])))]=unique(allgenes_ordered$chromosome_name)[i]
+}
+
+
+axis(1, which(!is.na(axis_lab)), labels=axis_lab[which(!is.na(axis_lab))])
+abline(h=0)
+abline(h=log2(1.5), lty="dashed", col="gray")
+abline(h=-log2(1.5), lty="dashed", col="gray")
+
+for(i in unique(allgenes_ordered$chromosome_name)){
+  abline(v=(which(allgenes_ordered$chromosome_name %in% i)[1]-0.5))
+}
+
+```
+
+
+`r length(which(interesting_genes$mean_log2FC>0))` genes out of `r dim(interesting_genes)[1]` were on average upregulated.
+
+
+
+### Distribution of pseudo-t-score
+
+```{r}
+interesting_genes$pseudotscore=interesting_genes$mean_log2FC/(interesting_genes$sd_log2FC/sqrt(interesting_genes$occurences))
+
+h=hist(interesting_genes$pseudotscore, breaks = 200, xlab="pseudo t-score", main="", plot=F)
+
+
+cuts <- as.numeric(cut(h$breaks, c(-Inf,-1.96,1.96,Inf)))
+
+colori=rep("black", length(cuts))
+
+colori[which(cuts==2)]="white"
+plot(h, col=colori, breaks = 200, xlab="pseudo t-score", main="")
+```
+
+
+
+
+
+### Graph colored with standardized pseudo t-score
+
+
+```{r}
+whitered=colorRampPalette(c("white", "red"))
+bluewhite=colorRampPalette(c("blue", "white"))
+
+
+cutcolors_pos=whitered(100)[as.numeric(cut(interesting_genes$pseudotscore[which(interesting_genes$mean_log2FC>=0)],breaks = 100))]
+
+cutcolors_neg=bluewhite(100)[as.numeric(cut(interesting_genes$pseudotscore[which(interesting_genes$mean_log2FC<0)],breaks = 100))]
+
+
+cutcolors_df_pos=data.frame("name"=interesting_genes$ensembl_gene_id[which(interesting_genes$mean_log2FC>=0)],"colors"=cutcolors_pos)
+cutcolors_df_neg=data.frame("name"=interesting_genes$ensembl_gene_id[which(interesting_genes$mean_log2FC<0)],"colors"=cutcolors_neg)
+
+
+rownames(cutcolors_df_neg)=cutcolors_df_neg$name
+rownames(cutcolors_df_pos)=cutcolors_df_pos$name
+
+cutcolors_df=rbind(cutcolors_df_neg,cutcolors_df_pos)
+cutcolors_df=cutcolors_df[V(graph_coex)$name,]
+```
+
+
+
+```{r, fig.height=14, fig.width=14}
+
+
+par(mar=c(0,0,0,5))
+set.seed(1)
+plot(graph_coex, layout=layout, vertex.label=nomi_vertex, vertex.color=as.character(cutcolors_df$colors), edge.color=new_colors, vertex.label.color=nomi_col)
+colkey(rev(viridis(12)), clim=c(2,13), add=T, clab="length co-DE cluster", width=.7, length=.3, shift = .2, dist=(-1)*0.05)
+colkey(c(bluewhite(100), whitered(100)), add=T, clab="standardized pseudo t-score", width=.7, length=.3, clim=c(min(interesting_genes$pseudotscore),max(interesting_genes$pseudotscore)),  shift=(-1)*0.2, dist=(-1)*0.05 )
+
+legend("topleft", 
+       c("other chrs", "chr21"), bty="n",cex=1,
+       pch=c(1,0), title="deregulated in:")
+
+legend("bottomleft", 
+       c("low", "high"), bty="n",pt.cex=c(1,3),
+       pch=1, title="log2(occurences):",cex=1)
+
+
+
+
+
+
+
+
+
+
+
+
+highest_changing_genes_table=interesting_genes[which(abs(interesting_genes$pseudotscore)>1.96),]
+
+
+highest_changing_genes=highest_changing_genes_table$ensembl_gene_id
+
+#highest_changing_genes_table[intersect(rownames(interesting_genes),highest_changing_genes),]
+
+
+```
+
+We detected `r length(highest_changing_genes)` with a significant pseudo t-score.
+
+
+```{r highest}
+tab_int=interesting_genes[highest_changing_genes,]
+tab_int=tab_int[order(tab_int$pseudotscore, decreasing = T),]
+
+options(knitr.table.format = "html") 
+kable(tab_int, "html") %>%
+    kable_styling(position = "left", bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width = T) %>%
+  scroll_box(width = "500px", height = "200px")
+
+```
+
+
+
+### Enrichment analysis for genes with high pseudo-t-score
+
+```{r}
+library(clusterProfiler)
+library(org.Hs.eg.db)
+lista_ensembl=highest_changing_genes
+lista.id <- bitr(lista_ensembl, fromType = "ENSEMBL",
+        toType = "ENTREZID",
+        OrgDb = org.Hs.eg.db)$ENTREZID
+
+
+```
+
+
+#### GO
+
+```{r}
+ego <- enrichGO(gene          = lista.id,
+                OrgDb         = org.Hs.eg.db,
+                ont           = "ALL",
+                pAdjustMethod = "BH",
+                pvalueCutoff  = 0.05,
+                qvalueCutoff  = 0.05,
+        readable      = TRUE)
+```
+
+
+```{r}
+dotplot(ego, showCategory=100)
+IFNgenes=c("IFNAR2","IFNAR1","RRP1B","EIF2AK2","IRF7","IFIT3","ILF3","BST2","TRIM5","RTP4","IFI27","IFIT1B","IRGM", "USP18","UBE2G2")
+neutrophil=c("PFKL","CCT8","CSTB","PDXK","CAT","METTL7A","PLAC8","ITGB2","CD55","VCL","ASAH1","BST2","S100A9","CD47")
+```
+
+### Interactor level
+
+```{r}
+library(STRINGdb)
+string_db2 <- STRINGdb$new(version="11",species=9606,score_threshold=900, input_directory="" )
+
+
+list_ds=as.data.frame(all_genes$ensembl_gene_id[grep("21", all_genes$chromosome_name)])
+colnames(list_ds)="list_ds"
+
+
+
+mapped <- string_db2$map( list_ds, "list_ds", removeUnmappedRows = FALSE )
+
+
+neighbors=c()
+for (i in 1:length(mapped$STRING_id[!(is.na(mapped$STRING_id))])) {
+  tryCatch({
+    neighbors=append(neighbors, string_db2$get_neighbors(mapped$STRING_id[!(is.na(mapped$STRING_id))][i] ))
+  }, error=function(e){})
+}
+
+neighbors=unique(neighbors)
+
+neighbors_ens=unique(getBM(attributes=c("ensembl_peptide_id", "ensembl_gene_id"),filters="ensembl_peptide_id", values=unlist(lapply(neighbors, FUN=function(x)(substring(x,6)))), mart = human)$ensembl_gene_id)
+
+
+
+list_ds2=as.data.frame(neighbors)
+colnames(list_ds2)="list_ds2"
+
+
+
+mapped2 <- string_db2$map( list_ds2, "list_ds2", removeUnmappedRows = FALSE )
+
+
+neighbors2=c()
+for (i in 1:length(mapped2$STRING_id[!(is.na(mapped2$STRING_id))])) {
+  tryCatch({
+    neighbors2=append(neighbors2, string_db2$get_neighbors(mapped2$STRING_id[!(is.na(mapped2$STRING_id))][i] ))
+  }, error=function(e){})
+}
+
+neighbors2=unique(neighbors2)
+
+neighbors_ens2=unique(getBM(attributes=c("ensembl_peptide_id", "ensembl_gene_id"),filters="ensembl_peptide_id", values=unlist(lapply(neighbors2, FUN=function(x)(substring(x,6)))), mart = human)$ensembl_gene_id)
+
+
+###
+
+
+list_ds3=as.data.frame(neighbors2)
+colnames(list_ds3)="list_ds3"
+
+
+
+mapped3 <- string_db2$map( list_ds3, "list_ds3", removeUnmappedRows = FALSE )
+
+
+neighbors3=c()
+for (i in 1:length(mapped3$STRING_id[!(is.na(mapped3$STRING_id))])) {
+  tryCatch({
+    neighbors3=append(neighbors3, string_db2$get_neighbors(mapped3$STRING_id[!(is.na(mapped3$STRING_id))][i] ))
+  }, error=function(e){})
+}
+
+neighbors3=unique(neighbors3)
+
+neighbors_ens3=unique(getBM(attributes=c("ensembl_peptide_id", "ensembl_gene_id"),filters="ensembl_peptide_id", values=unlist(lapply(neighbors3, FUN=function(x)(substring(x,6)))), mart = human)$ensembl_gene_id)
+
+
+
+###
+
+
+list_ds4=as.data.frame(neighbors3)
+colnames(list_ds4)="list_ds4"
+
+
+
+mapped4 <- string_db2$map( list_ds4, "list_ds4", removeUnmappedRows = FALSE )
+
+
+neighbors4=c()
+for (i in 1:length(mapped4$STRING_id[!(is.na(mapped4$STRING_id))])) {
+  tryCatch({
+    neighbors4=append(neighbors4, string_db2$get_neighbors(mapped4$STRING_id[!(is.na(mapped4$STRING_id))][i] ))
+  }, error=function(e){})
+}
+
+neighbors4=unique(neighbors4)
+
+neighbors_ens4=unique(getBM(attributes=c("ensembl_peptide_id", "ensembl_gene_id"),filters="ensembl_peptide_id", values=unlist(lapply(neighbors4, FUN=function(x)(substring(x,6)))), mart = human)$ensembl_gene_id)
+
+interesting_genes$interactor_level=rep("5+", dim(interesting_genes)[1])
+
+interesting_genes$interactor_level[which(interesting_genes$ensembl_gene_id %in% intersect(interesting_genes$ensembl_gene_id, neighbors_ens4))]=4
+
+interesting_genes$interactor_level[which(interesting_genes$ensembl_gene_id %in% intersect(interesting_genes$ensembl_gene_id, neighbors_ens3))]=3
+
+interesting_genes$interactor_level[which(interesting_genes$ensembl_gene_id %in% intersect(interesting_genes$ensembl_gene_id, neighbors_ens2))]=2
+
+interesting_genes$interactor_level[which(interesting_genes$ensembl_gene_id %in% intersect(interesting_genes$ensembl_gene_id, neighbors_ens))]=1
+
+interesting_genes$interactor_level[which(interesting_genes$chromosome_name=="21")]=0
+
+interesting_splitted=split(interesting_genes, interesting_genes$interactor_level)
+
+occurrences_interactorlevel=rep(NA, length(interesting_splitted))
+for(i in 1:length(interesting_splitted)){
+  occurrences_interactorlevel[i]=mean(interesting_splitted[[i]]$occurences)
+}
+
+# > occurrences_interactorlevel
+# [1] 7.813725 4.640777 4.581699 4.702703 4.500000 4.435644
+
+
+occurrences_pseudotscore=rep(NA, length(interesting_splitted))
+for(i in 1:length(interesting_splitted)){
+  occurrences_pseudotscore[i]=mean(interesting_splitted[[i]]$pseudotscore)
+}
+# > occurrences_pseudotscore
+# [1]  5.6213806155  3.0474310263  0.8454890448  1.5996111159  1.3980162160 -0.0006106038
+
+
+occurrences_mean_log2FC=rep(NA, length(interesting_splitted))
+for(i in 1:length(interesting_splitted)){
+  occurrences_mean_log2FC[i]=mean(interesting_splitted[[i]]$mean_log2FC)
+}
+# > occurrences_mean_log2FC
+# [1] 0.70914303 0.24463838 0.24968291 0.25619759 0.16968330 0.03433787
+
+occurrences_median_log2FC=rep(NA, length(interesting_splitted))
+for(i in 1:length(interesting_splitted)){
+  occurrences_median_log2FC[i]=mean(interesting_splitted[[i]]$median_log2FC)
+}
+
+
+# ggplot(interesting_genes, aes(y=pseudotscore, x=as.factor(interactor_level))) +xlab("interactor level")  +ylab("pseudo t-score")+geom_bar(fill="steelblue", stat = "summary", fun.y = "mean")+
+#   theme_minimal() +geom_errorbar(aes(ymin=pseudotscore-sd, ymax=pseudotscore+sd), width=.2,
+#                                     position=position_dodge(.9)) 
+# 
+# 
+# 
+
+
+occurrences_mean_abslog2FC=rep(NA, length(interesting_splitted))
+for(i in 1:length(interesting_splitted)){
+  occurrences_mean_abslog2FC[i]=mean(abs(interesting_splitted[[i]]$mean_log2FC))
+}
+
+
+
+#+++++++++++++++++++++++++
+# Function to calculate the mean and the standard deviation
+# for each group
+#+++++++++++++++++++++++++
+# data : a data frame
+# varname : the name of a column containing the variable
+#to be summariezed
+# groupnames : vector of column names to be used as
+# grouping variables
+data_summary <- function(data, varname, groupnames){
+  library(plyr)
+  summary_func <- function(x, col){
+    c(mean = mean(x[[col]], na.rm=TRUE),
+      se = sd(x[[col]], na.rm=TRUE)/sqrt(length(x[[col]])))
+  }
+  data_sum<-ddply(data, groupnames, .fun=summary_func,
+                  varname)
+  data_sum <- rename(data_sum, c("mean" = varname))
+  return(data_sum)
+}
+
+
+df2 <- data_summary(interesting_genes, varname="pseudotscore", 
+                     groupnames="interactor_level")
+# Convert dose to a factor variable
+df2$dose=as.factor(df2$interactor_level)
+
+
+
+p<- ggplot(df2, aes(x=interactor_level, y=pseudotscore, fill=interactor_level)) + 
+  geom_bar(stat="identity", color="black", 
+           position=position_dodge()) +
+  geom_errorbar(aes(ymin=pseudotscore, ymax=pseudotscore+se), width=.2,
+                position=position_dodge(.9)) +theme_minimal()
+print(p)
+```
+
+### co-DE and TADs
+
+```{r}
+tadsboundaries_cortex=read.csv("cortex_boundaries_dixon.csv", header=T)
+
+tadsboundaries_hESCs=read.csv("hESC_tads_dixon.csv", header=F)
+
+```
+
+```{r, fig.width=10}
+# human = useMart("ensembl", dataset = "hsapiens_gene_ensembl",host="oct2018.archive.ensembl.org")
+human = useEnsembl("ensembl", dataset = "hsapiens_gene_ensembl",
+                   mirror = "useast")
+
+
+ensembl = useMart("ENSEMBL_MART_ENSEMBL",
+   dataset="hsapiens_gene_ensembl",
+   host="may2009.archive.ensembl.org",
+   path="/biomart/martservice",
+   archive=FALSE)
+
+
+genes_coords=getBM(attributes=c("ensembl_gene_id",  "chromosome_name", "start_position", "end_position"),filters="ensembl_gene_id", values=interesting_genes$ensembl_gene_id, mart = ensembl)
+
+genes_coords1=getBM(attributes=c("ensembl_gene_id",  "chromosome_name", "start_position", "end_position"),filters="ensembl_gene_id", values=interesting_genes$ensembl_gene_id, mart = human)
+
+# hg18conv=getLDS(attributes = c("start_position"), filters = "start_position", values = genes_coords1$start_position, mart = human, attributesL = c("start_position"), martL = ensembl)
+
+
+rownames(genes_coords)=genes_coords$ensembl_gene_id
+tadsboundaries_hESCs$name=rownames(tadsboundaries_hESCs)
+tad_object=tadsboundaries_hESCs
+coord_object=genes_coords
+# gene="ENSG00000142168"
+find_tad_number=function(gene, tad_object, coord_object){
+  
+  subset=coord_object[gene,]
+  chr=paste0("chr", subset$chromosome_name)
+  subset_tad=tad_object[which(tad_object$V1==chr),]
+  
+    subset_tad=subset_tad[which(subset$start_position >=  subset_tad$V2),]
+        subset_tad=subset_tad[which(subset$start_position <=  subset_tad$V3),]
+    if(dim(subset_tad)[1]>1){subset_tad=subset_tad[which(subset$end_position <=  subset_tad$V3),]}
+   #what matters is where the gene starts, only if there is more than one results look at the end position
+
+    return(subset_tad$name)
+}
+
+
+tad_assignment=unlist(sapply(rownames(coord_object), FUN=function(x)(find_tad_number(x, tad_object, coord_object))))
+
+tad_assignment=tad_assignment[rownames(interesting_genes)]
+
+interesting_genes$tad=as.numeric(tad_assignment)
+
+chrs=c(as.character(1:22), "X")
+tads_per_chr=c()
+for(i in chrs){
+  tads_per_chr[i]=length(sort(table(interesting_genes[which(interesting_genes$chromosome_name==i),"tad"])))
+}
+
+# NCBI Build 36/hg18
+# 
+# listMarts(host="may2009.archive.ensembl.org", path="/biomart/martservice",archive=FALSE)
+# 
+# listMarts(host="may2009.archive.ensembl.org",
+#            path="/biomart/martservice",archive=FALSE)
+
+
+chrsizes=read.table("chrsizehg18.txt", sep="\t")
+
+
+tadsperchr=table(tad_object$V1)
+
+names(tadsperchr)=sapply(names(tadsperchr), FUN=function(x)(substr(x, start=4, stop=nchar(x))))
+
+tadsperchr=tadsperchr[chrs]
+
+barplot(rbind(tads_per_chr,tadsperchr), ylab="number of TADs")
+legend("topright",c("all TADs", "TADs with DE gene(s)"), fill=c("lightgray", "gray27"), bty="n")
+
+
+
+for(i in chrs){
+  length(sort(table(interesting_genes[which(interesting_genes$chromosome_name==i),"tad"])))
+}
+
+
+frequency_tads=as.data.frame(table(tad_assignment))
+
+merged=merge(frequency_tads,tad_object, by.x="tad_assignment", by.y="name", all.x=TRUE)
+
+genes_tad_chr4=merged[,c(2,3)]
+
+
+
+
+
+p <- ggplot(genes_tad_chr4, aes(x=V1, y=Freq)) + geom_boxplot()+ geom_jitter(shape=16, position=position_jitter(0.2))+ylab("DE genes per TAD")+ xlab("")  + theme_bw()
+# Box plot with jittered points
+# 0.2 : degree of jitter in x direction
+p
+```
+
+
+```{r}
+tadsmorethan1=names(table(tad_assignment)[which(table(tad_assignment)>1)])
+
+interesting_genescotad=interesting_genes[which(interesting_genes$tad %in% tadsmorethan1),]
+
+
+interesting_genescotad=interesting_genescotad[, c(1, dim(interesting_genescotad)[2])]
+
+interesting_genescotad=split(interesting_genescotad$ensembl_gene_id, interesting_genescotad$tad)
+
+
+combinazioni_tad=lapply(interesting_genescotad, FUN = function(x)(if(length(x)>1)(t(combn(x,2)))))
+
+
+
+dimensioni_tad=unlist(lapply(combinazioni_tad, FUN=function(x) dim(x)[1]))
+int_matrix_tad=as.data.frame(matrix(rep(NA, 3*sum(dimensioni_tad)), ncol=3))
+contatore=1
+for(i in 1:length(dimensioni_tad)){
+  int_matrix_tad[contatore:(contatore+dimensioni_tad[i]-1),c(1,2)]=combinazioni_tad[[i]]
+  int_matrix_tad[contatore:(contatore+dimensioni_tad[i]-1),3]=names(dimensioni_tad)[i]
+  contatore=contatore+dimensioni_tad[i]
+}
+int_matrix_nometadata_tad=int_matrix_tad[,c(1,2)]
+#order couple of interaction alphabetically
+int_matrix_nometadata_tad=as.list(as.data.frame(t(int_matrix_nometadata_tad)))
+int_matrix_nometadata_tad=lapply(int_matrix_nometadata_tad, sort)
+unlisted=unlist(int_matrix_nometadata_tad)
+unlisted=as.character(unlisted)
+matrix_int_nomet_tad=matrix(unlisted, ncol=2, byrow=T)
+primo_tad=paste(matrix_int_nomet_tad[,1], matrix_int_nomet_tad[,2]  , sep=".")
+
+# 
+# 
+# intersect(edges_matrix2$edges_names2, primo_tad)
+# 
+# 
+# 
+# 
+# 
+
+combinazioni_tad3=lapply(interesting_genescotad, FUN = function(x)(if(length(x)>2)(t(combn(x,3)))))
+combinazioni_tad3=combinazioni_tad3[!(unlist(lapply(combinazioni_tad3, is.null)))]
+
+dimensioni_tad3=unlist(lapply(combinazioni_tad3, FUN=function(x) dim(x)[1]))
+int_matrix_tad3=as.data.frame(matrix(rep(NA, 4*sum(dimensioni_tad)), ncol=4))
+contatore=1
+for(i in 1:length(dimensioni_tad3)){
+  int_matrix_tad3[contatore:(contatore+dimensioni_tad3[i]-1),c(1,2,3)]=combinazioni_tad3[[i]]
+  int_matrix_tad3[contatore:(contatore+dimensioni_tad3[i]-1),4]=names(dimensioni_tad3)[i]
+  contatore=contatore+dimensioni_tad3[i]
+}
+int_matrix_nometadata_tad3=int_matrix_tad3[,c(1,2,3)]
+#order couple of interaction alphabetically
+int_matrix_nometadata_tad3=as.list(as.data.frame(t(int_matrix_nometadata_tad3)))
+int_matrix_nometadata_tad3=lapply(int_matrix_nometadata_tad3, sort)
+unlisted=unlist(int_matrix_nometadata_tad3)
+unlisted=as.character(unlisted)
+matrix_int_nomet_tad3=matrix(unlisted, ncol=3, byrow=T)
+primo_tad3=paste(matrix_int_nomet_tad3[,1], matrix_int_nomet_tad3[,2]  , matrix_int_nomet_tad3[,3]  ,sep=".")
+
+# intersect(names(all_comb3_rank_top), primo_tad3)
+# 
+# 
+# 
+
+combinazioni_tad4=lapply(interesting_genescotad, FUN = function(x)(if(length(x)>3)(t(combn(x,4)))))
+combinazioni_tad4=combinazioni_tad4[!(unlist(lapply(combinazioni_tad4, is.null)))]
+
+dimensioni_tad4=unlist(lapply(combinazioni_tad4, FUN=function(x) dim(x)[1]))
+int_matrix_tad4=as.data.frame(matrix(rep(NA, 5*sum(dimensioni_tad)), ncol=5))
+contatore=1
+for(i in 1:length(dimensioni_tad4)){
+  int_matrix_tad4[contatore:(contatore+dimensioni_tad4[i]-1),c(1,2,3,4)]=combinazioni_tad4[[i]]
+  int_matrix_tad4[contatore:(contatore+dimensioni_tad4[i]-1),5]=names(dimensioni_tad4)[i]
+  contatore=contatore+dimensioni_tad4[i]
+}
+int_matrix_nometadata_tad4=int_matrix_tad4[,c(1,2,3,4)]
+#order couple of interaction alphabetically
+int_matrix_nometadata_tad4=as.list(as.data.frame(t(int_matrix_nometadata_tad4)))
+int_matrix_nometadata_tad4=lapply(int_matrix_nometadata_tad4, sort)
+unlisted=unlist(int_matrix_nometadata_tad4)
+unlisted=as.character(unlisted)
+matrix_int_nomet_tad4=matrix(unlisted, ncol=4, byrow=T)
+primo_tad4=paste(matrix_int_nomet_tad4[,1], matrix_int_nomet_tad4[,2]  , matrix_int_nomet_tad4[,3]  ,matrix_int_nomet_tad4[,4]  ,sep=".")
+# intersect(names(all_comb4_rank_top), primo_tad4)
+```
+
+```{r}
+lista=intersect(names(all_comb3_rank_top), primo_tad3)
+intriplets=unique(unlist(lapply(lista, FUN=function(x)(strsplit(x, ".", fixed=TRUE)[[1]]))))
+
+lista2=intersect(names(all_comb2_rank_top), primo_tad)
+
+induplet=unique(unlist(lapply(lista2, FUN=function(x)(strsplit(x, ".", fixed=TRUE)[[1]]))))
+
+duplet_matrix=interesting_genes[induplet,]
+
+interactionwithstringdb=rep(0, length(edges_matrix2$edges_names2))
+
+interactionwithstringdb[which(edges_matrix2$edges_names2 %in% firstsecond_string)]=1
+
+interactionwithstringdb[which(edges_matrix2$edges_names2 %in% secondfirst_string)]=1
+
+
+
+list_ds=as.data.frame(interesting_genes$ensembl_gene_id)
+colnames(list_ds)="list_ds"
+
+mapped <- string_db$map( list_ds, "list_ds", removeUnmappedRows = FALSE )
+
+interactions=string_db$get_interactions(mapped$STRING_id )
+
+interactions_merged=merge(interactions, mapped,by.x="from", by.y="STRING_id", all.x = TRUE)
+
+colnames(interactions_merged)[4]="from_ens"
+interactions_merged=merge(interactions_merged, mapped,by.x="to", by.y="STRING_id", all.x = TRUE)
+
+consistent_interactions=interactions_merged[c(which(firstsecond_string %in% edges_matrix2$edges_names2), which(secondfirst_string %in% edges_matrix2$edges_names2)),]
+
+```
+
+`r dim(consistent_interactions)[1]` are both co-DE events both in STRINGdb and GO.
+
+```{r}
+# library(gplots)
+# library(RColorBrewer)
+# 
+# heatmap.2(as.matrix(consistent_interactions[,c(3:5)]), scale="none", density.info="none", trace="none",srtCol=45, key.xlab ="score",margins=c(9,0),col=colorRampPalette(brewer.pal(9, "OrRd"))(256), labRow = "")
+```
+
+```{r}
+interactionwithGO=rep(0, length(edges_matrix2$edges_names2))
+
+interactionwithGO[which(edges_matrix2$edges_names2 %in% names(overlap_go[which(overlap_go>0)]))]=1
+
+interactionwithTAD=rep(0, length(edges_matrix2$edges_names2))
+
+interactionwithTAD[which(edges_matrix2$edges_names2 %in% primo_tad)]=1
+
+table_edges=cbind(interactionwithstringdb,interactionwithGO,interactionwithTAD)
+colnames(table_edges)=c("STRINGdb", "GO", "TAD")
+
+```
+
+```{r}
+heatmap.2(table_edges, scale="none", density.info="none", trace="none",srtCol=45, key.xlab ="score",col=colorRampPalette(brewer.pal(9, "OrRd"))(256),  margins=c(8,4),key=FALSE, dendrogram="none", ylab="co-DE pairs", labRow = "", cexCol=1)
+```
+
+
+## Disease association
+
+
+
+```{r}
+library(disgenet2r)
+
+
+genes=unique(interesting_genes$hgnc_symbol)
+
+gene_disease <- gene2disease(
+  gene     = genes,
+  score =c(0, 1), database="ALL",
+  verbose  = TRUE
+)
+results=extract(gene_disease)
+
+
+write.csv(results, file="result_comorbidity_top500.csv")
+
+
+
+disease_class=sort(table(results$disease_class_name), decreasing=T)
+
+# write.csv(as.data.frame(disease_class), file="disease_class.csv")
+# head(disease_class)          
+          
+disease_name=sort(table(results$disease_name), decreasing=T)
+
+# write.csv(as.data.frame(disease_name), file="disease_name.csv")
+
+
+
+
+```
+
+
+
+
+
+```{r}
+dpis=results[,c("gene_symbol", "geneid", "uniprotid", "gene_pli", "gene_dpi", "gene_dsi")]
+
+dpis=dpis[!(duplicated(dpis$gene_symbol)),]
+# list_diseases_sig=list_diseases[as.character(pvalues_01$Var1)]
+
+
+
+comorb_merged=merge(interesting_genes, dpis, by.x="hgnc_symbol", by.y="gene_symbol")
+
+
+comorb_merged=comorb_merged[order(comorb_merged$gene_dpi, decreasing = T),]
+
+# plot(comorb_merged$median_log2FC,comorb_merged$gene_dpi, xlab="log2FC (median)", ylab="disease pleiotropic index", col=alpha("black", 0.3), pch=16)
+# abline(v=log2(1.5), lty="dashed", col="red")
+# abline(v=-log2(1.5), lty="dashed", col="red")
+# 
+# 
+# plot(comorb_merged$median_log2FC,comorb_merged$gene_dpi, xlab="log2FC (median)", ylab="disease pleiotropic index", col=alpha("black", 0.3), pch=16)
+
+# plot(comorb_merged$entropy_macro,comorb_merged$gene_dpi)
+
+
+calc_mean_dpi=function(genes){
+  gene_disease <- gene2disease(
+  gene     = genes,
+  score =c(0, 1), database="ALL",
+  verbose  = FALSE
+)
+results=extract(gene_disease)
+dpis=results[,c("gene_symbol", "geneid", "uniprotid", "gene_pli", "gene_dpi", "gene_dsi")]
+dpis=dpis[!(duplicated(dpis$gene_symbol)),]
+
+return(mean(dpis$gene_dpi, na.rm=T))
+}
+```
+
+
+```{r}
+# boxplot(comorb_merged$gene_dpi,
+#         
+#         comorb_merged$gene_dpi[which(comorb_merged$hgnc_symbol %in% lista1_bm$hgnc_symbol)],
+#         comorb_merged$gene_dpi[which(comorb_merged$hgnc_symbol %in% lista2_bm$hgnc_symbol)],
+# comorb_merged$gene_dpi[which(comorb_merged$hgnc_symbol %in% lista3_bm$hgnc_symbol)])
+
+nperm=1000
+totest=lista1_bm$hgnc_symbol
+
+meanall=mean(comorb_merged$gene_dpi[which(comorb_merged$hgnc_symbol %in% totest)], na.rm=T)
+permvalues=rep(NA, length(nperm))
+set.seed(1)
+for(i in 1:nperm){
+  setsample=sample(comorb_merged$hgnc_symbol, length(lista2_bm$hgnc_symbol))
+  permvalues[i]=mean(comorb_merged$gene_dpi[which(comorb_merged$hgnc_symbol %in% setsample)], na.rm=T)
+}
+#(sum((permvalues > meanall))+1)/(nperm+1)
+
+
+
+totest=lista3_bm$hgnc_symbol
+
+meanall=mean(comorb_merged$gene_dpi[which(comorb_merged$hgnc_symbol %in% totest)], na.rm=T)
+permvalues=rep(NA, length(nperm))
+set.seed(1)
+for(i in 1:nperm){
+  setsample=sample(comorb_merged$hgnc_symbol, length(lista2_bm$hgnc_symbol))
+  permvalues[i]=mean(comorb_merged$gene_dpi[which(comorb_merged$hgnc_symbol %in% setsample)], na.rm=T)
+}
+#(sum((permvalues > meanall))+1)/(nperm+1)
+```
+
+```{r}
+
+genes=unique(interesting_genes$hgnc_symbol)
+
+gene_disease <- gene2disease(
+  gene     = genes,
+  score =c(0, 1), database="ALL",
+  verbose  = TRUE
+)
+results=extract(gene_disease)
+
+
+gene_disease2 <- gene2disease(
+  gene     = genes,
+  score =c(0.4, 1), database="CURATED",
+  verbose  = TRUE
+)
+results2=extract(gene_disease2)
+
+
+
+
+gene_disease3 <- gene2disease(
+  gene     = c(lista1_bm$hgnc_symbol, lista2_bm$hgnc_symbol,lista3_bm$hgnc_symbol),
+  score =c(0.4, 1), database="CURATED",
+  verbose  = TRUE
+)
+```
+
+
+
+```{r}
+
+
+
+
+nperm=200
+totest=interesting_genes$hgnc_symbol
+
+totest1=interesting_genes$hgnc_symbol[which(interesting_genes$chromosome_name=="21")]
+totest2=setdiff(intersect(neighbors_hsa21, totest), totest1)
+
+totest3=setdiff(interesting_genes$hgnc_symbol, c(totest1, totest2))
+meanall=mean(comorb_merged$gene_dpi[which(comorb_merged$hgnc_symbol %in% totest)], na.rm=T)
+permvalues=rep(NA, length(nperm))
+set.seed(1)
+for(i in 1:nperm){
+  setsample=sample(allgenes$hgnc_symbol, length(totest))
+  permvalues[i]=calc_mean_dpi(setsample)
+#  print(i)
+}
+(sum((permvalues > meanall))+1)/(nperm+1)
+
+
+mean1=mean(comorb_merged$gene_dpi[which(comorb_merged$hgnc_symbol %in% totest1)], na.rm=T)
+mean2=mean(comorb_merged$gene_dpi[which(comorb_merged$hgnc_symbol %in% totest2)], na.rm=T)
+mean3=mean(comorb_merged$gene_dpi[which(comorb_merged$hgnc_symbol %in% totest3)], na.rm=T)
+
+
+boxplot(list(meanall,permvalues), ylab="disease pleiotropic index (mean)", xaxt="n", col=c("blue", "red"))
+axis(1, c(1,2),c("top 500 DE genes", "1000 permutations"))
+```
+
+
+
+```{r}
+cluster1_GDAs=results2[results2$gene_symbol %in% lista1_bm$hgnc_symbol,]
+
+kable(cluster1_GDAs[order(cluster1_GDAs$score, decreasing=T),], "html") %>%
+    kable_styling(position = "left", bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width = T) 
+
+
+
+```
+
+
+```{r}
+cluster2_GDAs=results2[results2$gene_symbol %in% lista2_bm$hgnc_symbol,]
+
+kable(cluster2_GDAs[order(cluster2_GDAs$score, decreasing=T),], "html") %>%
+    kable_styling(position = "left", bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width = T) 
+```
+
+```{r}
+cluster3_GDAs=results2[results2$gene_symbol %in% lista3_bm$hgnc_symbol,]
+
+
+
+kable(cluster3_GDAs[order(cluster3_GDAs$score, decreasing=T),], "html") %>%
+    kable_styling(position = "left", bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width = T) 
+
+```
+
+
+```{r}
+plot(gene_disease3, class="Heatmap")
+plot(gene_disease3, class="DiseaseClass")
+
+```
+
+
+### GO/DO similarity
+
+```{r}
+library(GOSemSim)
+
+hsGO2 <- godata('org.Hs.eg.db', keytype = "ENSEMBL", ont="BP")
+hsGO_mf <- godata('org.Hs.eg.db', keytype = "ENSEMBL", ont="MF")
+hsGO_cc <- godata('org.Hs.eg.db', keytype = "ENSEMBL", ont="CC")
+gene_sims_mf=mgeneSim(rownames(interesting_genes), semData=hsGO_mf, measure="Wang", combine="BMA", verbose=FALSE)
+gene_sims_cc=mgeneSim(rownames(interesting_genes), semData=hsGO_cc, measure="Wang", combine="BMA", verbose=FALSE)
+
+gene_sims=mgeneSim(rownames(interesting_genes), semData=hsGO2, measure="Wang", combine="BMA", verbose=FALSE)
+gene_matrix_old=gene_matrix
+gene_matrix=gene_sims
+
+gene_matrix[is.na(gene_matrix)] <- 0
+
+ # mean(gene_matrix, na.rm=T)
+ # 
+ # mean(gene_matrix[lista1_bm$ensembl_gene_id,lista1_bm$ensembl_gene_id], na.rm=T)
+ # 
+ # 
+for(i in 1:dim(gene_matrix)[1]){
+  for(j in 1:dim(gene_matrix)[2]){
+    if(i==j){
+      gene_matrix[i,j]=NA
+    }
+    if(i<j){
+      gene_matrix[i,j]=NA
+    }
+  }
+}
+
+ 
+ 
+
+gene_matrix_mf=gene_sims_mf
+gene_matrix_cc=gene_sims_cc
+
+
+
+ gene_sims_mf[is.na(gene_sims_mf)] <- 0
+
+
+for(i in 1:dim(gene_sims_mf)[1]){
+  for(j in 1:dim(gene_sims_mf)[2]){
+    if(i==j){
+      gene_sims_mf[i,j]=NA
+    }
+    if(i<j){
+      gene_sims_mf[i,j]=NA
+    }
+  }
+}
+ 
+# mean(gene_sims_mf, na.rm=T)
+ 
+ 
+# mean(gene_sims_mf[intersect(rownames(gene_sims_mf),lista1_bm$ensembl_gene_id),intersect(rownames(gene_sims_mf),lista1_bm$ensembl_gene_id)], na.rm=T)
+# mean(gene_sims_mf[intersect(rownames(gene_sims_mf),lista2_bm$ensembl_gene_id),intersect(rownames(gene_sims_mf),lista2_bm$ensembl_gene_id)], na.rm=T)
+# mean(gene_sims_mf[intersect(rownames(gene_sims_mf),lista3_bm$ensembl_gene_id),intersect(rownames(gene_sims_mf),lista3_bm$ensembl_gene_id)], na.rm=T)
+# 
+
+ 
+ 
+ 
+  gene_sims_cc[is.na(gene_sims_cc)] <- 0
+
+
+for(i in 1:dim(gene_sims_cc)[1]){
+  for(j in 1:dim(gene_sims_cc)[2]){
+    if(i==j){
+      gene_sims_cc[i,j]=NA
+    }
+    if(i<j){
+      gene_sims_cc[i,j]=NA
+    }
+  }
+}
+
+   # mean(gene_sims_cc, na.rm=T)
+ 
+ 
+ # mean(gene_sims_cc[intersect(rownames(gene_sims_cc),lista1_bm$ensembl_gene_id),intersect(rownames(gene_sims_cc),lista1_bm$ensembl_gene_id)], na.rm=T)
+ #  mean(gene_sims_cc[intersect(rownames(gene_sims_cc),lista2_bm$ensembl_gene_id),intersect(rownames(gene_sims_cc),lista2_bm$ensembl_gene_id)], na.rm=T)
+ #    mean(gene_sims_cc[intersect(rownames(gene_sims_cc),lista3_bm$ensembl_gene_id),intersect(rownames(gene_sims_cc),lista3_bm$ensembl_gene_id)], na.rm=T)
+ #    
+  
+lista.mod.copy2_id=lista.mod.copy
+
+for(i in 1:length(lista.mod.copy2_id)){
+lista.mod.copy2_id[[i]] <- bitr(lista.mod.copy[[i]], fromType = "ENSEMBL",
+        toType = "ENTREZID",
+        OrgDb = org.Hs.eg.db)$ENTREZID
+}
+ #     
+ mat_emtrez=DOSE::geneSim(lista.mod.copy2_id$all,  measure="Wang", combine="BMA")
+ mat_emtrez[is.na(mat_emtrez)] <- 0
+ 
+ 
+ for(i in 1:dim(mat_emtrez)[1]){
+  for(j in 1:dim(mat_emtrez)[2]){
+    if(i==j){
+      mat_emtrez[i,j]=NA
+    }
+    if(i<j){
+      mat_emtrez[i,j]=NA
+    }
+  }
+}
+
+# mean(mat_emtrez, na.rm=T)
+# mean(mat_emtrez[lista_cluster_ENTREZ$one,lista_cluster_ENTREZ$one], na.rm=T)
+# mean(mat_emtrez[lista_cluster_ENTREZ$two,lista_cluster_ENTREZ$two], na.rm=T)
+# mean(mat_emtrez[lista_cluster_ENTREZ$three,lista_cluster_ENTREZ$three], na.rm=T)
+# 
+
+ 
+
+ 
+
+# 
+# gs1 <- c("835", "5261","241", "994", "514", "533")
+# gs2 <- c("578","582", "400", "409", "411")
+# clusterSim(gs1, gs2, semData=hsGO, measure="Wang", combine="BMA")
+# 
+# library(org.Hs.eg.db)
+# x <- org.Hs.egGO
+# hsEG <- mappedkeys(x)
+# set.seed <- 123
+# clusters <- list(a=sample(hsEG, 20), b=sample(hsEG, 20), c=sample(hsEG, 20))
+# mclusterSim(clusters, semData=hsGO, measure="Wang", combine="BMA")
+library(clusterProfiler)
+lista_cluster=list(lista1_bm$ensembl_gene_id, lista2_bm$ensembl_gene_id,lista3_bm$ensembl_gene_id)
+lista_cluster_ENTREZ=lista_cluster
+for(i in 1:length(lista_cluster)){
+lista_cluster_ENTREZ[[i]] <- bitr(lista_cluster[[i]], fromType = "ENSEMBL",
+        toType = "ENTREZID",
+        OrgDb = org.Hs.eg.db)$ENTREZID
+}
+
+names(lista_cluster_ENTREZ)=c("one", "two", "three")
+
+
+ nperm=1000
+list_perm_bp=rep(NA, nperm)
+list_perm_mf=rep(NA, nperm)
+list_perm_cc=rep(NA, nperm)
+
+list_perm_do=rep(NA, nperm)
+
+list_perm_bp2=rep(NA, nperm)
+list_perm_mf2=rep(NA, nperm)
+list_perm_cc2=rep(NA, nperm)
+
+list_perm_do2=rep(NA, nperm)
+
+ set.seed(1)
+ for(i in 1:nperm){
+   permuted=sample(lista.mod.copy2_id$all, length(lista_cluster_ENTREZ$one))
+   permuted2=sample(lista.mod.copy2_id$all, length(lista_cluster_ENTREZ$three))
+
+  
+  permuted_ens=sample(rownames(interesting_genes), length(lista_cluster_ENTREZ$one))
+  permuted_ens2=sample(rownames(interesting_genes), length(lista_cluster_ENTREZ$three))
+
+     list_perm_bp[i]=mean(gene_matrix[intersect(rownames(gene_matrix),permuted_ens),intersect(rownames(gene_matrix),permuted_ens)], na.rm=T)
+    list_perm_bp2[i]=mean(gene_matrix[intersect(rownames(gene_matrix),permuted_ens2),intersect(rownames(gene_matrix),permuted_ens2)], na.rm=T)
+    
+    list_perm_mf[i]=mean(gene_sims_mf[intersect(rownames(gene_sims_mf),permuted_ens),intersect(rownames(gene_sims_mf),permuted_ens)], na.rm=T)
+    list_perm_mf2[i]=mean(gene_sims_mf[intersect(rownames(gene_sims_mf),permuted_ens2),intersect(rownames(gene_sims_mf),permuted_ens2)], na.rm=T)
+    
+    list_perm_cc[i]=mean(gene_sims_cc[intersect(rownames(gene_sims_cc),permuted_ens),intersect(rownames(gene_sims_cc),permuted_ens)], na.rm=T)
+    list_perm_cc2[i]=mean(gene_sims_cc[intersect(rownames(gene_sims_cc),permuted_ens2),intersect(rownames(gene_sims_cc),permuted_ens2)], na.rm=T)
+    
+    list_perm_do[i]=mean(mat_emtrez[intersect(rownames(mat_emtrez),permuted),intersect(rownames(mat_emtrez),permuted)], na.rm=T)
+    list_perm_do2[i]=mean(mat_emtrez[intersect(rownames(mat_emtrez),permuted2),intersect(rownames(mat_emtrez),permuted2)], na.rm=T)
+ }
+ 
+ 
+  
+#  
+#  > (sum(list_perm>mean(mat_emtrez[lista_cluster_ENTREZ$one,lista_cluster_ENTREZ$one], na.rm=T))+1)/(nperm+1)
+# [1] 0.006993007
+# > (sum(list_perm>mean(mat_emtrez[lista_cluster_ENTREZ$two,lista_cluster_ENTREZ$two], na.rm=T))+1)/(nperm+1)
+# [1] 0.8841159
+# > (sum(list_perm>mean(mat_emtrez[lista_cluster_ENTREZ$three,lista_cluster_ENTREZ$three], na.rm=T))+1)/(nperm+1)
+# [1] 0.7762238
+#  
+#  find_permutation=function(list_perm, mean_value){
+#    (sum(list_perm>mean_value)+1)/(nperm+1)
+#  }
+# 
+# 
+# find_permutation(list_perm_bp, mean(gene_matrix[intersect(rownames(gene_matrix),lista1_bm$ensembl_gene_id),intersect(rownames(gene_matrix),lista1_bm$ensembl_gene_id)], na.rm=T))
+# 
+# find_permutation(list_perm_bp, mean(gene_matrix[intersect(rownames(gene_matrix),lista2_bm$ensembl_gene_id),intersect(rownames(gene_matrix),lista2_bm$ensembl_gene_id)], na.rm=T))
+# find_permutation(list_perm_bp2, mean(gene_matrix[intersect(rownames(gene_matrix),lista3_bm$ensembl_gene_id),intersect(rownames(gene_matrix),lista3_bm$ensembl_gene_id)], na.rm=T))
+# # 0.002997003
+# 
+# find_permutation(list_perm_mf, mean(gene_sims_mf[intersect(rownames(gene_sims_mf),lista1_bm$ensembl_gene_id),intersect(rownames(gene_sims_mf),lista1_bm$ensembl_gene_id)], na.rm=T))
+# 
+# find_permutation(list_perm_mf, mean(gene_sims_mf[intersect(rownames(gene_sims_mf),lista2_bm$ensembl_gene_id),intersect(rownames(gene_sims_mf),lista2_bm$ensembl_gene_id)], na.rm=T))
+# find_permutation(list_perm_mf2, mean(gene_sims_mf[intersect(rownames(gene_sims_mf),lista3_bm$ensembl_gene_id),intersect(rownames(gene_sims_mf),lista3_bm$ensembl_gene_id)], na.rm=T))
+# 
+# find_permutation(list_perm_cc, mean(gene_sims_cc[intersect(rownames(gene_sims_cc),lista1_bm$ensembl_gene_id),intersect(rownames(gene_sims_cc),lista1_bm$ensembl_gene_id)], na.rm=T))
+# 
+# find_permutation(list_perm_cc, mean(gene_sims_cc[intersect(rownames(gene_sims_cc),lista2_bm$ensembl_gene_id),intersect(rownames(gene_sims_cc),lista2_bm$ensembl_gene_id)], na.rm=T))
+# # 0.003996004
+# find_permutation(list_perm_cc2, mean(gene_sims_cc[intersect(rownames(gene_sims_cc),lista3_bm$ensembl_gene_id),intersect(rownames(gene_sims_cc),lista3_bm$ensembl_gene_id)], na.rm=T))
+# # 0.04395604
+# 
+#  
+# 
+# find_permutation(list_perm_do,mean(mat_emtrez[intersect(rownames(mat_emtrez),lista_cluster_ENTREZ$one),intersect(rownames(mat_emtrez),lista_cluster_ENTREZ$one)], na.rm=T))
+# # 0.001998002
+# find_permutation(list_perm_do,mean(mat_emtrez[intersect(rownames(mat_emtrez),lista_cluster_ENTREZ$two),intersect(rownames(mat_emtrez),lista_cluster_ENTREZ$two)], na.rm=T))
+# find_permutation(list_perm_do2,mean(mat_emtrez[intersect(rownames(mat_emtrez),lista_cluster_ENTREZ$three),intersect(rownames(mat_emtrez),lista_cluster_ENTREZ$three)], na.rm=T))
+# 
+
+
+```
+
+```{r, fig.height=20}
+par(mfcol=c(4,1))
+boxplot(list("permutations"=list_perm_bp, "cluster 1"=mean(gene_matrix[intersect(rownames(gene_matrix),lista1_bm$ensembl_gene_id),intersect(rownames(gene_matrix),lista1_bm$ensembl_gene_id)], na.rm=T),
+                           "cluster 2"=mean(gene_matrix[intersect(rownames(gene_matrix),lista2_bm$ensembl_gene_id),intersect(rownames(gene_matrix),lista2_bm$ensembl_gene_id)], na.rm=T),
+                           "cluster 3"=mean(gene_matrix[intersect(rownames(gene_matrix),lista3_bm$ensembl_gene_id),intersect(rownames(gene_matrix),lista3_bm$ensembl_gene_id)], na.rm=T)), main="mean similarity (BP)")
+
+boxplot(list("permutations"=list_perm_mf, "cluster 1"=mean(gene_sims_mf[intersect(rownames(gene_sims_mf),lista1_bm$ensembl_gene_id),intersect(rownames(gene_sims_mf),lista1_bm$ensembl_gene_id)], na.rm=T),
+                           "cluster 2"=mean(gene_sims_mf[intersect(rownames(gene_sims_mf),lista2_bm$ensembl_gene_id),intersect(rownames(gene_sims_mf),lista2_bm$ensembl_gene_id)], na.rm=T),
+                           "cluster 3"=mean(gene_sims_mf[intersect(rownames(gene_sims_mf),lista3_bm$ensembl_gene_id),intersect(rownames(gene_sims_mf),lista3_bm$ensembl_gene_id)], na.rm=T)), main="mean similarity (MF)")
+
+boxplot(list("permutations"=list_perm_cc, "cluster 1"=mean(gene_sims_cc[intersect(rownames(gene_sims_cc),lista1_bm$ensembl_gene_id),intersect(rownames(gene_sims_cc),lista1_bm$ensembl_gene_id)], na.rm=T),
+                           "cluster 2"=mean(gene_sims_cc[intersect(rownames(gene_sims_cc),lista2_bm$ensembl_gene_id),intersect(rownames(gene_sims_cc),lista2_bm$ensembl_gene_id)], na.rm=T),
+                           "cluster 3"=mean(gene_sims_cc[intersect(rownames(gene_sims_cc),lista3_bm$ensembl_gene_id),intersect(rownames(gene_sims_cc),lista3_bm$ensembl_gene_id)], na.rm=T)), main="mean similarity (CC)")
+
+boxplot(list("permutations"=list_perm_do, "cluster 1"=mean(mat_emtrez[intersect(rownames(mat_emtrez),lista_cluster_ENTREZ$one),intersect(rownames(mat_emtrez),lista_cluster_ENTREZ$one)], na.rm=T),
+                          "cluster 2"= mean(mat_emtrez[intersect(rownames(mat_emtrez),lista_cluster_ENTREZ$two),intersect(rownames(mat_emtrez),lista_cluster_ENTREZ$two)], na.rm=T),
+                           "cluster 3"=mean(mat_emtrez[intersect(rownames(mat_emtrez),lista_cluster_ENTREZ$three),intersect(rownames(mat_emtrez),lista_cluster_ENTREZ$three)], na.rm=T)), main="mean similarity (DO)")
+
+```
+
+
+## Checking with human T-cell dataset
+
+SRP078912
+
+```{r}
+pthreshold=.05
+load("~/OneDrive - CRG - Centre de Regulacio Genomica/Dropbox (CRG)/metanalysis/SRP078912_tcells.RData")
+summary(res)
+resSRP078912_l=res
+universe_human=rownames(resSRP078912_l)
+resSRP078912_l=as.data.frame(resSRP078912_l)
+resSRP078912_l=resSRP078912_l[order(resSRP078912_l$padj),]
+resSRP078912_l=resSRP078912_l[complete.cases(resSRP078912_l),]
+resSRP078912_l_sig=resSRP078912_l[which(resSRP078912_l$padj<pthreshold),]
+
+resSRP078912_l_sigs=rownames(resSRP078912_l_sig)[1:500]
+```
+
+```{r}
+count_table<-function(category, universe, de_list_inuniverse, de_list_incat){#given number of element in each list create a contigency table for performing fisher test
+  mat=matrix(c(de_list_incat, 
+               de_list_inuniverse-de_list_incat,
+               category-de_list_incat,
+               universe-(category-de_list_incat+de_list_inuniverse)),2)
+}
+
+category=length(intersect(universe_human, rownames(interesting_genes)))
+universe=length(universe_human)
+de_list_inuniverse=length( interesting_genes$ensembl_gene_id)
+de_list_incat=length(intersect(rownames(interesting_genes), resSRP078912_l_sigs))
+mat=count_table(category, universe, de_list_inuniverse, de_list_incat)
+fisher.test((mat), alternative="greater")
+
+#14%overlap
+
+phyper(de_list_incat-1, de_list_inuniverse, universe-de_list_inuniverse, category,lower.tail= FALSE)
+# phyper(Overlap-1, group2, Total-group2, group1,lower.tail= FALSE)
+#9.288694e-63
+
+library(eulerr)
+plot(euler(list("consistently DE genes"=rownames(interesting_genes),"T-cells (GSE84531)"=resSRP078912_l_sigs), shape = "ellipse"), quantities = TRUE)
+
+
+
+par(mar=c(4,8,2,2))
+barplot(c(length(intersect(resSRP078912_l_sigs, DS_brain_studies)),
+length(intersect(resSRP078912_l_sigs, DS_blood_studies)),
+length(intersect(resSRP078912_l_sigs, DS_placenta_amnios_studies)),
+length(intersect(resSRP078912_l_sigs, DS_undifferentiated_studies)),
+length(intersect(resSRP078912_l_sigs, DS_fibroblasts_studies)),
+length(intersect(resSRP078912_l_sigs, entropicgenes))),
+names.arg=c("brain", "blood", "placenta/amnios", "iPSCs/ESCs", "fibroblasts", "entropic genes"), xlab="number of genes",
+col=c(igraph::V(graph_coex2)$color[which(igraph::V(graph_coex2)$name =="brain")],
+              igraph::V(graph_coex2)$color[which(igraph::V(graph_coex2)$name =="blood")],
+              igraph::V(graph_coex2)$color[which(igraph::V(graph_coex2)$name =="placenta/amnios")],
+              igraph::V(graph_coex2)$color[which(igraph::V(graph_coex2)$name =="iPSCs/ESCs")],
+              igraph::V(graph_coex2)$color[which(igraph::V(graph_coex2)$name =="fibroblasts")],"black"
+              ), horiz=T, las=2)
+
+
+# 
+# par(mar=c(4,8,2,2))
+# barplot(c(length(intersect(resSRP078912_l_sigs, DS_brain_studies))/length(DS_brain_studies)*100,
+# length(intersect(resSRP078912_l_sigs, DS_blood_studies))/length(DS_blood_studies)*100,
+# length(intersect(resSRP078912_l_sigs, DS_placenta_amnios_studies))/length(DS_placenta_amnios_studies)*100,
+# length(intersect(resSRP078912_l_sigs, DS_undifferentiated_studies))/length(DS_undifferentiated_studies)*100,
+# length(intersect(resSRP078912_l_sigs, DS_fibroblasts_studies))/length(DS_fibroblasts_studies)*100,
+# length(intersect(resSRP078912_l_sigs, entropicgenes))/length(entropicgenes)*100),
+# names.arg=c("brain", "blood", "placenta/amnios", "iPSCs/ESCs", "fibroblasts", "entropic genes"), xlab="% of genes",
+# col=c(igraph::V(graph_coex2)$color[which(igraph::V(graph_coex2)$name =="brain")],
+#               igraph::V(graph_coex2)$color[which(igraph::V(graph_coex2)$name =="blood")],
+#               igraph::V(graph_coex2)$color[which(igraph::V(graph_coex2)$name =="placenta/amnios")],
+#               igraph::V(graph_coex2)$color[which(igraph::V(graph_coex2)$name =="iPSCs/ESCs")],
+#               igraph::V(graph_coex2)$color[which(igraph::V(graph_coex2)$name =="fibroblasts")],"black"
+#               ), horiz=T, las=2)
+
+
+```
+
+### Summary interesting genes
+
+```{r}
+library(eulerr)
+set.seed(1)
+plot(euler(list("consistently DE"=interesting_genes$ensembl_gene_id,"consistently DE only in one tissue macro-category"=setdiff(unique(unlist(DS_tissue_genes)), entropicgenes), "consistently DE in more tissue macro-categories"=entropicgenes, "consistently upregulated/ downregulated"=highest_changing_genes),shape = "ellipse"), quantities = TRUE)
+
+```
+```{r}
+summary_forapp=summary[,c("GEO.ArrayExpress", "SRA_study", "Species" ,"Model","Platform","Cell_type","Tissue","PMID", "Design", "Description"      ,"Notes" )]
+whiteblue=colorRampPalette(c("white", "blue"))
+cutcolors=whiteblue(13)[gene_matrix_old[V(graph_coex)$name,3]]
+
+```
+
+
+```{r}
+save.image("meta_analysis.rda")
+# save(summary_forapp, allgenes, list_array, interesting_genes,cutcolors, edge_color, graph_coex, mod.copy_coex, file="forapp.rda")
+
+write.csv(interesting_genes, "coDEgenes_microcategories.csv")
+write.csv(interesting_genes_macro, "coDEgenes_macrocategories.csv")
+
+```
+
+
+```{r}
+# library(easyPubMed)
+# summary=read.csv("summary_metanalysis_DS.csv",  header=T)
+# pmid=unique(summary$PMID)
+# pmid=pmid[!is.na(pmid)]
+# 
+# data_papers=matrix(length(pmid)*4, ncol=4, nrow=length(pmid))
+# colnames(data_papers)=c("PMID", "YEAR", "MONTH", "DAY")
+# for(i in 1:length(pmid)){
+# my_entrez_id <- get_pubmed_ids(pubmed_query_string=as.character(pmid[i]))
+# fetched <- fetch_pubmed_data(my_entrez_id)
+# data_papers[i, 1]=unique(article_to_df(fetched)$pmid)
+# data_papers[i, 2]=unique(article_to_df(fetched)$year)
+# data_papers[i, 3]=unique(article_to_df(fetched)$month)
+# data_papers[i, 4]=unique(article_to_df(fetched)$day)
+#   }
+# 
+# data_papers=as.data.frame(data_papers)
+# data_papers$YEAR=as.numeric(data_papers$YEAR)
+# data_papers$MONTH=as.numeric(data_papers$MONTH)
+# data_papers$DAY=as.numeric(data_papers$DAY)
+# 
+# data_papers=data_papers[order(data_papers$YEAR, data_papers$MONTH,data_papers$DAY),]
+# Last paper used in the metanalysis the `r data_papers[length(pmid),2]`/`r data_papers[length(pmid),3]`/`r data_papers[length(pmid),4]`
+```
+
+#### Venn diagram with Vilardell data
+
+```{r venn}
+library(eulerr)
+
+plot(euler(list("Vilardell"=previous$Ensembl, "Consistently DE"=interesting_genes$ensembl_gene_id), shape = "ellipse"), quantities = TRUE)
+
+
+```
+
+```{r}
+count_table<-function(category, universe, de_list_inuniverse, de_list_incat){#given number of element in each list create a contigency table for performing fisher test
+  mat=matrix(c(de_list_incat, 
+               de_list_inuniverse-de_list_incat,
+               category-de_list_incat,
+               universe-(category-de_list_incat+de_list_inuniverse)),2)
+}
+
+category=length(previous$Ensembl)
+universe=length(unique(unlist(list_ensembl)))
+de_list_inuniverse=length( interesting_genes$ensembl_gene_id)
+de_list_incat=length(intersect(previous$Ensembl, interesting_genes$ensembl_gene_id))
+mat=count_table(category, universe, de_list_inuniverse, de_list_incat)
+fisher.test((mat), alternative="greater")
+
+```
+
+```{r}
+mirna_hsa21=c("hsa-mir-8069-1","hsa-mir-6274-1","hsa-mir-10401","hsa-mir-3648-1","hsa-mir-6274-2","hsa-mir-6274-3","hsa-mir-6274-4","hsa-mir-10396b","hsa-mir-3648-2","hsa-mir-10396a","hsa-mir-3156-3","hsa-mir-3118-1","hsa-mir-8069-2","hsa-mir-99a","hsa-mir-let-7c","hsa-mir-125b-2","hsa-mir-548x","hsa-mir-6130","hsa-mir-155","hsa-mir-4759","hsa-mir-4327","hsa-mir-6501","hsa-mir-802","hsa-mir-6508","hsa-mir-4760","hsa-mir-3197","hsa-mir-6814","hsa-mir-5692b","hsa-mir-6070","hsa-mir-6815")
+
+library(multiMiR)
+
+
+multimir_results <- get_multimir(org     = 'hsa',
+                                 mirna   = mirna_hsa21,
+                                 table   = 'validated',
+                                 summary = TRUE)
+
+targets=unique(multimir_results@data$target_ensembl)
+
+intersect(targets,interesting_genes$ensembl_gene_id[which(interesting_genes$mean_log2FC>0)])
+
+intersect(targets,interesting_genes$ensembl_gene_id[which(interesting_genes$mean_log2FC<0)])
+
+length(intersect(targets,interesting_genes$ensembl_gene_id[which(interesting_genes$mean_log2FC>0)]))/length(interesting_genes$ensembl_gene_id[which(interesting_genes$mean_log2FC>0)])
+
+length(intersect(targets,interesting_genes$ensembl_gene_id[which(interesting_genes$mean_log2FC<0)]))/length(interesting_genes$ensembl_gene_id[which(interesting_genes$mean_log2FC<0)])
+
+upgenes=interesting_genes$ensembl_gene_id[which(interesting_genes$mean_log2FC>0)]
+
+category=length(intersect(universe_human, targets))
+universe=length(universe_human)
+de_list_inuniverse=length( intersect(upgenes, universe_human))
+de_list_incat=length(intersect(intersect(upgenes, universe_human), intersect(universe_human, targets)))
+mat=count_table(category, universe, de_list_inuniverse, de_list_incat)
+fisher.test((mat), alternative="greater")
+#p-value = 4.734e-07
+
+downgenes=interesting_genes$ensembl_gene_id[which(interesting_genes$mean_log2FC<0)]
+
+category=length(intersect(universe_human, targets))
+universe=length(universe_human)
+de_list_inuniverse=length( intersect(downgenes, universe_human))
+de_list_incat=length(intersect(intersect(downgenes, universe_human), intersect(universe_human, targets)))
+mat=count_table(category, universe, de_list_inuniverse, de_list_incat)
+fisher.test((mat), alternative="greater")
+
+#p-value = 7.822e-06
+```
+
+```{r}
+upgenescons=highest_changing_genes_table$ensembl_gene_id[which(highest_changing_genes_table$mean_log2FC>0)]
+
+category=length(intersect(universe_human, targets))
+universe=length(universe_human)
+de_list_inuniverse=length( intersect(upgenescons, universe_human))
+de_list_incat=length(intersect(intersect(upgenescons, universe_human), intersect(universe_human, targets)))
+mat=count_table(category, universe, de_list_inuniverse, de_list_incat)
+fisher.test((mat), alternative="greater")
+#p-value = 0.0374
+
+downgenescons=highest_changing_genes_table$ensembl_gene_id[which(highest_changing_genes_table$mean_log2FC<0)]
+
+category=length(intersect(universe_human, targets))
+universe=length(universe_human)
+de_list_inuniverse=length( intersect(downgenescons, universe_human))
+de_list_incat=length(intersect(intersect(downgenescons, universe_human), intersect(universe_human, targets)))
+mat=count_table(category, universe, de_list_inuniverse, de_list_incat)
+fisher.test((mat), alternative="greater")
+
+#p-value = 0.001044
+```
+consistently downregulated genes that are target of mi-R mapping on HSA21
+
+```{r}
+Table=multimir_results@data[which( multimir_results@data$target_ensembl %in% intersect(intersect(downgenescons, universe_human), intersect(universe_human, targets))),]
+
+
+kable(Table, "html") %>%
+    kable_styling(position = "left", bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width = T) 
+
+```
+
+

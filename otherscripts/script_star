@@ -1,0 +1,87 @@
+#!/bin/bash
+# Export all environment variables
+#$ -V
+# Your job name
+#$ -N align
+# Select queue
+#$ -q long-sl7
+# Use current working directory
+#$ -cwd
+# multicore
+#$ -pe smp 12
+#$ -e /users/mdierssen/sequencing_data/DS_transcriptomics/errout/
+#$ -o /users/mdierssen/sequencing_data/DS_transcriptomics/errout/
+#$ -l virtual_free=40G
+#$ -t 2-71
+
+
+source /users/mdierssen/idetoma/.bash_profile
+source /users/mdierssen/idetoma/.bashrc
+
+which STAR
+which read_table.sh
+
+file_srr=/users/mdierssen/sequencing_data/DS_transcriptomics/ds_srr.csv
+dir_main=/users/mdierssen/sequencing_data/DS_transcriptomics/
+SRR=$(/users/mdierssen/idetoma/software/read_table.sh -s "," -c 4 -l $SGE_TASK_ID  -f $file_srr)
+fastq=`grep $SRR $file_srr | cut -d, -f 5`
+dir_fastq="${dir_main}${fastq}"
+
+species=$(/users/mdierssen/idetoma/software/read_table.sh -s "," -c 2 -l $SGE_TASK_ID  -f $file_srr)
+
+read_type=$(/users/mdierssen/idetoma/software/read_table.sh -s "," -c 1 -l $SGE_TASK_ID  -f $file_srr)
+
+
+
+if [ "${species}" == "Mus musculus" ]
+then
+	GTF=/users/mdierssen/idetoma/genomes/gencode.vM17.annotation.gtf
+	GENOME_DIR=/users/mdierssen/idetoma/genomes/STAR_mouse/
+fi
+
+if [ "${species}" == "Homo sapiens" ]
+then
+        GTF=/users/mdierssen/idetoma/genomes/gencode.v28.annotation.gtf
+        GENOME_DIR=/users/mdierssen/idetoma/genomes/STAR_human/
+fi
+
+cd $dir_fastq
+
+mkdir $SRR
+
+cd ./${SRR}
+
+
+if [ "${read_type}" == "PAIRED" ]
+then
+
+/software/mdierssen/STAR-2.5.3a/source/STAR --runThreadN 12 --genomeDir $GENOME_DIR  --readFilesCommand zcat \
+ --readFilesIn "${dir_fastq}/${SRR}_1.fastq.gz" "${dir_fastq}/${SRR}_2.fastq.gz" \
+ --outFilterType BySJout --outFilterMultimapNmax 20 --alignSJoverhangMin 8 --alignSJDBoverhangMin 1 \
+ --outFilterMismatchNmax 999  --outFilterMismatchNoverReadLmax 0.04 \
+ --alignIntronMin 20 --alignIntronMax 1000000 --alignMatesGapMax 1000000 --outSAMtype BAM SortedByCoordinate --outFilterIntronMotifs RemoveNoncanonical \
+ --quantMode GeneCounts --sjdbGTFfile $GTF --outFileNamePrefix "${dir_fastq}/${SRR}/${SRR}" --twopassMode Basic
+
+fi
+
+if [ "${read_type}" == "SINGLE" ]
+then
+
+/software/mdierssen/STAR-2.5.3a/source/STAR --runThreadN 12 --genomeDir $GENOME_DIR  --readFilesCommand zcat \
+ --readFilesIn "${dir_fastq}/${SRR}_1.fastq.gz"  \
+ --outFilterType BySJout --outFilterMultimapNmax 20 --alignSJoverhangMin 8 --alignSJDBoverhangMin 1 \
+ --outFilterMismatchNmax 999  --outFilterMismatchNoverReadLmax 0.04 \
+ --alignIntronMin 20 --alignIntronMax 1000000 --alignMatesGapMax 1000000 --outSAMtype BAM SortedByCoordinate --outFilterIntronMotifs RemoveNoncanonical \
+ --quantMode GeneCounts --sjdbGTFfile $GTF --outFileNamePrefix "${dir_fastq}/${SRR}/${SRR}" --twopassMode Basic
+
+
+fi
+
+
+
+
+
+if [ "$SGE_TASK_ID" -eq "$SGE_TASK_LAST" ]
+then
+    echo "Job Array: $JOB_ID ($JOB_NAME) ran $SGE_TASK_LAST tasks and finished" | /bin/mail -s "Last Task: $SGE_TASK_LAST, current task $SGE_TASK_ID" ilario.detoma@crg.eu
+fi
